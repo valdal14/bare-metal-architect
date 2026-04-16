@@ -25,7 +25,7 @@ void enqueue(struct DataChunk **queue, int capacity, int *current_size, int id, 
    if(*current_size == capacity)
     {
         fprintf(stderr, "Queue is full\n");
-        exit(1);
+        return;
     }
 
     queue[*current_size] = (struct DataChunk*)malloc(sizeof(struct DataChunk));
@@ -47,7 +47,7 @@ void dequeue(struct DataChunk **queue, int *current_size)
     if(*current_size == 0)
     {
         fprintf(stderr, "Queue is empty\n");
-        exit(1);
+        return;
     }
     
     // chunk to pop from the queue
@@ -55,8 +55,7 @@ void dequeue(struct DataChunk **queue, int *current_size)
     
     if(chunk == NULL)
     {
-        printf("EXIT");
-        exit(1);
+        return;
     }
 
     printf("chunk id = %d will be  dequeued...\n", chunk->id);
