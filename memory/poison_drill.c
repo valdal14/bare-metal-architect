@@ -32,10 +32,6 @@ char *fill(int size)
 void print_list(char *list, int size)
 {
     for(int i = 0; i < size; i++)
-        // why here I do not need to dereference *list[i]
-        // I thought to get to the value from a pointer we must
-        // since this is not yet clear to me we need to review it
-        // and work with theory and an example....
         printf("index: %d - value: = %c\n", i, list[i]);
 }
 
