@@ -24,6 +24,8 @@ int main(void)
     // of using using & since it is already a pointer to the 
     // first value of it.
     crack_vault(vault);
+    // check the mutation
+    printf("vault[1] = %d\n", vault[1]);
     return 0;
 }
 
