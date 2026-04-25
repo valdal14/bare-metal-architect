@@ -70,8 +70,8 @@ char *dequeue(struct Printer *p)
         exit(1);
     }
     
-    // get the size of the message at index 0
-    int msn_size = strlen(p->queue->messages[0]);
+    // get the size of the message at index 0 + the null terminator \0
+    int msn_size = strlen(p->queue->messages[0]) + 1;
     // allocate space to returned it
     char *dequeued_msn = (char *)malloc(msn_size);
     if(dequeued_msn == NULL) exit(1);
@@ -81,7 +81,7 @@ char *dequeue(struct Printer *p)
     // Shift all remaining messages forward by one position.
     for(int i = 0; i < p->size - 1; i++)
     {
-        strncpy(p->queue->messages[i], p->queue->messages[i + 1], strlen(p->queue->messages[i]));
+        strncpy(p->queue->messages[i], p->queue->messages[i + 1], QUEUE_MSN_SIZE);
     }
     
     p->size = p->size - 1;
@@ -133,7 +133,8 @@ int main(void)
     printf("Dequeued msn: %s\n", dq_msn);
  
     print_queue(p);
-
+    
+    free(dq_msn);
     free_ram(p);
     return 0;
 }
