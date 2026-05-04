@@ -40,6 +40,12 @@ struct LegendsCard *init_deck()
     return head;
 }
 
+/**
+ * @brief Bubble sort implementation
+ * @param struct LegendsCard pointer
+ * @param unsigned int num_cards The number of the cards stored
+ * @return void 
+ */
 void bubble_sort_cards(struct LegendsCard *list, unsigned int num_cards)
 {
     int swapped = 0;
@@ -59,7 +65,7 @@ void bubble_sort_cards(struct LegendsCard *list, unsigned int num_cards)
         counter++;
     }
     
-    printf("-----------------\n");
+    printf("------------------------\n");
     
     // Bubble Sort Logic
     do {
@@ -87,12 +93,34 @@ void bubble_sort_cards(struct LegendsCard *list, unsigned int num_cards)
         printf("%s costs %d\n", cards[i].name, cards[i].magicka_cost);
 }
 
+/*
+ * @brief Remove allocated object from the heap
+ * @param struct LegendsCard pointer
+ */
+void free_memory(struct LegendsCard *p)
+{
+    struct LegendsCard *node = p;
+    struct LegendsCard *next_node = NULL;
+    
+    while(p == NULL)
+    {
+        next_node = node->next;
+        free(node->name);
+        free(node);
+        node = next_node;
+    }
+
+    free(p);
+}
 
 
 int main(void)
 {
     struct LegendsCard *deck = init_deck();
+    printf("----- BUBBLE SORT -----\n");
     bubble_sort_cards(deck, 3);
 
+
+    free_memory(deck);
     return 0;
 }
