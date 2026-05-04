@@ -119,8 +119,7 @@ int main(void)
     struct LegendsCard *deck = init_deck();
     printf("----- BUBBLE SORT -----\n");
     bubble_sort_cards(deck, 3);
-
-
+    
     free_memory(deck);
     return 0;
 }
