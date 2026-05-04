@@ -10,7 +10,7 @@ struct Weather
 {
     char *station;
     double temp;
-    char degree; // Changed to a single char, since we only need 'C' or 'F'
+    char degree; 
 };
 
 /**
@@ -98,7 +98,6 @@ void build_report(struct Weather *backend, struct Weather *channel)
  */
 void send_to_channel(struct Weather *p)
 {
-    // Notice we use %c here to print the single character!
     if(p->degree == 'C')
     {
         printf("%s\n", p->station);
@@ -124,11 +123,9 @@ void send_to_channel(struct Weather *p)
 void free_ram(struct Weather *p)
 {
     if (p != NULL) {
-        // Must free the internal malloc'd string FIRST
         if (p->station != NULL) {
             free(p->station);
         }
-        // Then free the struct wrapper
         free(p);
     }
 }
@@ -147,13 +144,10 @@ int main(void)
     if(wc == NULL) exit(1);
 
     // 3. Process
-    // Notice we just pass the pointers directly, no need for &wc here 
-    // because we are just modifying the contents of the struct, not changing the pointer itself!
     build_report(weather_backend, wc);
     send_to_channel(wc);
     
     // 4. Cleanup 
-    // Now both can be freed safely because they are separate blocks of memory!
     free_ram(weather_backend);
     free_ram(wc);
     
