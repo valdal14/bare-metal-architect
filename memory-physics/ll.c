@@ -82,6 +82,23 @@ void remove_last(struct List **list)
     }
 }
 
+void reverse_list(struct List **list)
+{
+    struct List *current = *list;
+    struct List *previous = NULL;
+    struct List *next_node = NULL;
+
+    while(current != NULL)
+    {
+        next_node = current->next;
+        current->next = previous;
+        previous = current;
+        current = next_node;
+    }
+
+    *list = previous;
+}
+
 void print(struct List *list)
 {
     int counter = 0;
@@ -120,6 +137,8 @@ int main(void)
     add_node(list, "Beer");
     print(list);
     remove_last(&list);
+    print(list);
+    reverse_list(&list);
     print(list);
     free_list(list);
     return 0;
