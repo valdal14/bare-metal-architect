@@ -39,7 +39,7 @@ void add_node(Node **head_ref, int new_data)
 
 /**
  * @brief Prints the nodes
- * @oaram Node head pointer
+ * @param Node head pointer
  * @return void
  */
 void print_list(Node *head)
@@ -57,7 +57,7 @@ void print_list(Node *head)
 
 /**
  * @brief Deallocate Nodes from the heap 
- * @oaram Node head pointer
+ * @param Node head pointer
  * @return void
  */
 void free_nodes(Node **head_ref)
