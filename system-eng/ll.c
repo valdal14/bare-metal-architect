@@ -71,6 +71,8 @@ void free_nodes(Node **head_ref)
         free(current);
         current = next_node;
     }
+    
+    *head_ref = NULL;
 }
 
 int main(void)
