@@ -53,6 +53,30 @@ void print_list(Node *head)
         count++;
         current = current->next;
     }
+
+    printf("---------------\n");
+}
+
+/**
+ * @brief Reverse the current list 
+ * @param Node head pointer
+ * @return void
+ */
+void reverse_list(Node **head_ref)
+{
+    Node *current = *head_ref;
+    Node *prev = NULL;
+    Node *next_node = NULL;
+
+    while(current != NULL)
+    {
+        next_node = current->next;
+        current->next = prev;
+        prev = current;
+        current = next_node;
+    }
+
+    *head_ref = prev;
 }
 
 /**
@@ -82,6 +106,9 @@ int main(void)
     add_node(&head, 20);
     add_node(&head, 30);
     
+    print_list(head);
+
+    reverse_list(&head);
     print_list(head);
 
     free_nodes(&head);
