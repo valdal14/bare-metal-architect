@@ -23,7 +23,7 @@ void print_result(int i)
  */
 unsigned char grant_permission(unsigned char current_perms, unsigned char new_perm)
 {
-    return current_perms = current_perms | new_perm;
+    return current_perms | new_perm;
 }
 
 /**
