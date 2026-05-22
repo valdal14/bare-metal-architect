@@ -43,7 +43,6 @@ void remove_node(struct Node **head, int target_value)
         free(current);
         return;
     }
-
     
     // Walk down the list. Stop when we find the value OR hit the end.
     while (current != NULL && current->value != target_value)
