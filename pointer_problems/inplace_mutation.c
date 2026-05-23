@@ -73,9 +73,9 @@ void clean(LinkedList *list)
 LinkedList *reverse_list(LinkedList *list)
 {
     if(list->head == NULL) return list;
-    Node *prev = NULL;
     Node *current = list->head;
-    Node *next = current->next;
+    Node *prev = NULL;
+    Node *next = NULL;
 
     while(current != NULL)
     {
