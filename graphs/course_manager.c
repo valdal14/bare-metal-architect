@@ -146,11 +146,6 @@ void clean(DAG *dag)
     dag = NULL;
 }
 
-void DFS(DAG *dag, int course_idx, int state[COURSES])
-{
-    // TODO
-}
-
 int main(void)
 {
     int state[COURSES] = {0};
@@ -164,8 +159,6 @@ int main(void)
 
     setup_dag(courses, &dag);
     print(dag);
-
-    DFS(dag, 2, state);
 
     clean(dag);
     return 0;
