@@ -12,7 +12,8 @@ typedef struct EdgeNode
 typedef struct Graph
 {
     int num_tasks;
-    int *DSU; 
+    int *DSU;
+    int *state;
     EdgeNode **adj_list;
 } Graph;
 
@@ -47,7 +48,7 @@ void set_union(int node_a, int node_b, Graph *graph)
     // If they share the same root, they are already connected! (Cycle detected)
     if(root_a == root_b)
     {
-        fprintf(stderr, "Cycle detected between %d and %d", root_a, root_b);
+        fprintf(stderr, "Cycle detected between %d and %d\n", root_a, root_b);
         return;
     }
 
@@ -84,6 +85,46 @@ int get_independent_cluster(Graph *graph)
 }
 
 /**
+ * @brief Detects if there is a cycle
+ * @param Graph graph pointer
+ * @param int current_task 
+ * @return int 
+ */
+int has_cycle(Graph *graph, int current_task)
+{
+
+    if(current_task < 0 || current_task > graph->num_tasks) exit(1);
+    // check if the current_task has a cycle
+    if(graph->state[current_task] == 1) return 1;
+    // if current_task is 2 it means we already visited and no cycles were detected 
+    if(graph->state[current_task] == 2) return 0;
+
+    if(graph->state[current_task] == 0)
+    {
+        printf("Current task = %d\n", current_task);
+        graph->state[current_task] = 1;
+
+        EdgeNode *current = graph->adj_list[current_task];
+             
+        while(current != NULL)
+        {
+            if(has_cycle(graph, current->target_task) == 1)
+            {
+                printf("Cycle detected: current_task %d & task %d\n", current_task, current->target_task);
+                return 1;
+            }
+
+            current = current->next;
+        }
+
+        graph->state[current_task] = 2;
+        return 0;
+    }
+
+    exit(1);
+}
+
+/**
  * @brief Creates a new Graph and allocates spaces for the vertices
  * @param int vertices
  * @return void
@@ -103,6 +144,11 @@ Graph* create_graph(int vertices)
     if(graph->DSU == NULL) exit(1);
     for(int i = 0; i < vertices; i++) graph->DSU[i] = -1;
     
+
+    graph->state = (int *)malloc(vertices * sizeof(int));
+    if(graph->state == NULL) exit(1);
+    for(int i = 0; i < vertices; i++) graph->state[i] = 0;
+
     return graph;
 }
 
@@ -148,6 +194,25 @@ void print(Graph *graph)
 }
 
 /**
+ * @brief Testing the DAG for cycles 
+ * @param Graph graph pointer
+ * @return void
+ */
+void test_graph_for_cycles(Graph *graph)
+{
+    for(int i = 0; i < graph->num_tasks; i++)
+    {
+        // Only trigger the DFS if we haven't explored this node yet
+        if(graph->state[i] == 0) 
+        {
+            int res = has_cycle(graph, i);
+            char *string_res = res == 1 ? "true" : "false";
+            printf("Task %d cycle = %s\n", i, string_res);
+        }
+    }
+}
+
+/**
  * @brief Free the allocated heap 
  * @param Graph graph pointer
  * @return void
@@ -181,6 +246,8 @@ int main(void)
 
     add_dependency(graph, task_sub1[1], task_sub1[0]);
     add_dependency(graph, task_sub1[2], task_sub1[1]);
+    
+    add_dependency(graph, task_sub1[1], task_sub1[2]); // cycle 
 
     add_dependency(graph, task_sub2[1], task_sub2[0]);
     add_dependency(graph, task_sub2[2], task_sub2[0]);
@@ -189,7 +256,9 @@ int main(void)
 
     int independent = get_independent_cluster(graph);
     printf("# of independent cluster is %d\n", independent);
+    printf("--------------------------\n");
 
+    test_graph_for_cycles(graph);
     clean(graph);
     
     return 0;
