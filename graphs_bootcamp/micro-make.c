@@ -14,6 +14,8 @@ typedef struct Graph
     int num_tasks;
     int *DSU;
     int *state;
+    int *topo_order;
+    int topo_idx;
     EdgeNode **adj_list;
 } Graph;
 
@@ -116,8 +118,13 @@ int has_cycle(Graph *graph, int current_task)
 
             current = current->next;
         }
-
+        
+        // set the state to visited 
         graph->state[current_task] = 2;
+        // add the current_task to the topology order stack
+        graph->topo_order[graph->topo_idx] = current_task;
+        graph->topo_idx++;
+
         return 0;
     }
 
@@ -137,8 +144,11 @@ Graph* create_graph(int vertices)
     
     graph->adj_list = (EdgeNode **)calloc(vertices, sizeof(EdgeNode *));
     if(graph->adj_list == NULL) exit(1);
-    
     graph->num_tasks = vertices;
+    
+    graph->topo_order = (int *)malloc((vertices -1) * sizeof(int));
+    if(graph->topo_order == NULL) exit(1);
+    graph->topo_idx = 0;
 
     graph->DSU = (int *)malloc(vertices * sizeof(int));
     if(graph->DSU == NULL) exit(1);
@@ -210,6 +220,14 @@ void test_graph_for_cycles(Graph *graph)
             printf("Task %d cycle = %s\n", i, string_res);
         }
     }
+
+    printf("- Task Execution order:\n");
+    
+    for(int i = 0; i < graph->num_tasks; i++)
+    {
+        printf("Task[%d] -> %d ", i, graph->topo_order[i]);
+    }
+    printf("\n");
 }
 
 /**
@@ -235,6 +253,8 @@ void clean(Graph *graph)
 
     free(graph->adj_list);
     free(graph->DSU);
+    free(graph->state);
+    free(graph->topo_order);
     free(graph);
 }
 
@@ -247,7 +267,7 @@ int main(void)
     add_dependency(graph, task_sub1[1], task_sub1[0]);
     add_dependency(graph, task_sub1[2], task_sub1[1]);
     
-    add_dependency(graph, task_sub1[1], task_sub1[2]); // cycle 
+    //add_dependency(graph, task_sub1[1], task_sub1[2]); // cycle 
 
     add_dependency(graph, task_sub2[1], task_sub2[0]);
     add_dependency(graph, task_sub2[2], task_sub2[0]);
@@ -257,8 +277,9 @@ int main(void)
     int independent = get_independent_cluster(graph);
     printf("# of independent cluster is %d\n", independent);
     printf("--------------------------\n");
-
+    
     test_graph_for_cycles(graph);
+    
     clean(graph);
     
     return 0;
