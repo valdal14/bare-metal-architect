@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "Dijkstra.h"
 
 #define CITIES 6
 #define CITY_LEN 10
@@ -224,6 +225,7 @@ void clean(WDG *graph)
     graph = NULL;
 }
 
+
 int main(void)
 {
     WDG *wdg = NULL;
@@ -234,7 +236,8 @@ int main(void)
     add_route(wdg, "Málaga", "Córdoba", 160);
     add_route(wdg, "Granada", "Jaén", 90);
     add_route(wdg, "Córdoba", "Sevilla", 140);
-
+    
     clean(wdg);
+	
     return 0;
 }
