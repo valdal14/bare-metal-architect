@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include "Dijkstra.h"
 
 /**
@@ -156,30 +155,4 @@ HeapNode pop(MinHeap *heap)
 
     // Return the original shortest distance
     return root;
-}
-
-int main(void)
-{
-    MinHeap *min_heap = NULL;
-    init_minheap(&min_heap, 6);
-    
-    // Pushing random routes out of order
-    push(min_heap, 4, 200); // Jaén: 200km
-    push(min_heap, 2, 50);  // Almería: 50km
-    push(min_heap, 1, 120); // Granada: 120km
-    push(min_heap, 5, 15);  // Sevilla: 15km
-    
-    printf("Extracting routes from shortest to longest:\n");
-    printf("----------------------------------------\n");
-    
-    // Pop every item out of the heap until it is empty
-    while(min_heap->size > 0)
-    {
-        HeapNode shortest = pop(min_heap);
-        printf("City ID: %d | Distance: %d km\n", shortest.city_id, shortest.distance);
-    }
-
-    free(min_heap->heap_nodes);
-    free(min_heap);
-    return 0;
 }
