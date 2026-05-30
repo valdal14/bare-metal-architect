@@ -225,6 +225,79 @@ void clean(WDG *graph)
     graph = NULL;
 }
 
+/**
+ * @brief Finds the shortest path using dijkstra's algo
+ * @param WDG graph pointer
+ * int start_city
+ * @return void
+ */
+void run_dijkstra(WDG *graph, int start_city)
+{
+    int distances[CITIES];
+    
+    for (int i = 0; i < CITIES; i++)
+    {
+        distances[i] = 999999;
+    }
+    
+    distances[start_city] = 0;
+
+    MinHeap *heap = NULL;
+    init_minheap(&heap, 20); 
+    push(heap, start_city, 0);
+
+    while (heap->size > 0)
+    {
+        // Extract the Cheapest City
+        HeapNode current = pop(heap);
+        int current_city = current.city_id;
+
+        // If we found a faster route skip it.
+        if (current.distance > distances[current_city]) continue;
+
+        // Traverse the Intersections
+        EdgeNode *current_edge = graph->edges[current_city];
+        
+        while (current_edge != NULL)
+        {
+            int destination = current_edge->destination;
+            int highway_cost = current_edge->weight;
+
+            // Calculate total cost from start to this destination
+            int new_distance = distances[current_city] + highway_cost;
+
+            // Check if this is the best route 
+            if (new_distance < distances[destination])
+            {
+                // Update the list  with the faster time
+                distances[destination] = new_distance;
+
+                // Push so I can explore outwards from it later
+                push(heap, destination, new_distance);
+            }
+
+            // Move to the next
+            current_edge = current_edge->next;
+        }
+    }
+
+    printf("\nShortest distances from %s:\n", graph->cities[start_city]->name);
+    printf("----------------------------------------\n");
+    for (int i = 0; i < CITIES; i++)
+    {
+        if (distances[i] == 999999)
+        {
+            printf("To %-10s : UNREACHABLE (No roads available)\n", graph->cities[i]->name);
+        }
+        else
+        {
+            printf("To %-10s : %d km\n", graph->cities[i]->name, distances[i]);
+        }
+    }
+
+    free(heap->heap_nodes);
+    free(heap);
+}
 
 int main(void)
 {
@@ -237,6 +310,9 @@ int main(void)
     add_route(wdg, "Granada", "Jaén", 90);
     add_route(wdg, "Córdoba", "Sevilla", 140);
     
+    // 0 is the Málaga idx 
+    run_dijkstra(wdg, 0);
+
     clean(wdg);
 	
     return 0;
