@@ -15,10 +15,9 @@
  */
 void exec_routine_leave_house(uint8_t *home, void(*callback)(uint8_t *home))
 {
-    // 0000 0011
-    // 0000 0111 
     uint8_t set_routine = BIT(HEATER) | BIT(ALARM);
-    *home = set_routine;
+    // set the new bits but do not touch existing turned on bit if there are
+    *home |= set_routine;
     callback(home);
 }
 
