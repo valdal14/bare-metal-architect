@@ -413,7 +413,7 @@ void use_consumable(Inventory *inventory, char *consumable_name, uint8_t *ph, ui
     uint8_t magicka = ITEM_D_EXTRACT_RIGHT(consumable->item_detail.consumable_detail);
    
     // check if the player has enough magicka to consume the selected item
-    if(*pm - magicka < 0)
+    if(*pm < magicka)
     {
         fprintf(stderr, "Not enough  magicka to consume the item\n");
         return;
@@ -450,6 +450,7 @@ void clean_mem(Inventory *inventory)
         }
     }
 
+    free(inventory->items);
     free(inventory);
     inventory = NULL;
 }
