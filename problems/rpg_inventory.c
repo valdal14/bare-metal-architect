@@ -362,7 +362,6 @@ void equip_weapon(Inventory *inventory, char *weapon_name)
     }
     else
     {
-        weapon->item_state = ITEM_EQUIP_MASK;
         weapon->item_state |= BIT(ITEM_EQUIP_IDX);
         
         if((weapon->item_state & BIT(ITEM_EQUIP_IDX)) != 0)
