@@ -5,6 +5,23 @@
 
 #define WEAPON 0
 #define CONSUMABLE 1
+#define CAPACITY 10 
+#define BREAK printf("---------------------------------\n");
+// Change state Macro 
+#define BIT(x) (1 << (x))
+// Item State Macros
+#define ITEM_RESET_MASK 0x00 
+#define ITEM_QUEST_IDX 0
+#define ITEM_BROKEN_IDX 1
+#define ITEM_EQUIP_IDX 3
+#define ITEM_ADDED_IDX 7
+#define ITEM_EQUIP_MASK 0x8F
+// ItemDetail Masks
+#define ITEM_D_MASK_LEFT 0xF0
+#define ITEM_D_MASK_RIGHT 0x0F
+#define ITEM_D_COMBINE(left, right) ((((uint8_t)(left) << 4) & ITEM_D_MASK_LEFT) | ((uint8_t)(right) & ITEM_D_MASK_RIGHT))
+#define ITEM_D_EXTRACT_LEFT(val) (((uint8_t)(val) & ITEM_D_MASK_LEFT) >> 4)
+#define ITEM_D_EXTRACT_RIGHT(val) ((uint8_t)(val) & ITEM_D_MASK_RIGHT)
 
 enum Weapons
 {
@@ -22,7 +39,7 @@ enum Consumables
 
 union ItemDetail
 {
-    // 4 bits durability - 4 bits damage
+    // 4 bits damage & 4 bits durability
     uint8_t wepaon_detail;
     // 4 bits magicka cost - 4 bits health points
     uint8_t consumable_detail;
@@ -31,6 +48,11 @@ union ItemDetail
 typedef struct Item
 {
     char *name;
+    // Added, Equipped, Broken, Quest Item.
+    // Quest Item = 0 
+    // Broken = 2 
+    // Equipped = 4 
+    // Placed in the Inventory = 8
     uint8_t item_state;
     union ItemDetail item_detail; 
     struct Item *next;
@@ -46,10 +68,10 @@ typedef struct Inventory
 /**
  * @brief Hashes a string key into a valid array index.
  * @param key The string to hash.
- * @param capacity The size of the hash table array.
- * @return int The calculated index.
+ * @param uint8_t capacity The size of the hash table array.
+ * @return uint8_t The calculated index.
  */
-int hash_function(const char *key, int capacity) {
+uint8_t hash_function(const char *key, uint8_t capacity) {
     int hash = 0;
     while (*key != '\0') {
         hash = (hash + *key) % capacity;
@@ -79,19 +101,19 @@ uint8_t *map_weapon_stats(enum Weapons weapon)
     {
         case AXE:
             pow = 15;
-            dur = 112;
+            dur = 8;
             break;
         case BOW:
-            pow = 8;
-            dur = 112;
+            pow = 4;
+            dur = 7;
             break;
         case DAGGER:
-            pow = 4;
-            dur = 128;
+            pow = 2;
+            dur = 4;
             break;
         case SWORD:
             pow = 10;
-            dur = 240;
+            dur = 15;
             break;
         default:
             fprintf(stderr, "Unsupported WEAPON\n");
@@ -124,12 +146,12 @@ uint8_t *map_consumable(enum Consumables consumable)
     switch(consumable)
     {
         case POTION:
-            health = 128;
-            cost = 8;
+            health = 8;
+            cost = 4;
             break;
         case SNACK:
-            health = 16;
-            cost = 112;
+            health = 4;
+            cost = 2;
             break;
         default:
             fprintf(stderr, "Unsupported CONSUMABLE\n");
@@ -157,7 +179,7 @@ void init_inventory(Inventory **inventory)
         exit(1);
     }
 
-    new_inv->capacity = 10;
+    new_inv->capacity = CAPACITY;
     new_inv->items_stored = 0;
     new_inv->items = (Item **)calloc(1, sizeof(Item) * new_inv->capacity);
 
@@ -180,11 +202,57 @@ void init_inventory(Inventory **inventory)
 void add_weapon(Inventory *inventory, char *weapon_name, enum Weapons weapon)
 {
     uint8_t *stats = map_weapon_stats(weapon);
+    // create two variables to hold the 4 bits damage & 4 bits damage
+    uint8_t left_value = stats[0];
+    uint8_t right_value = stats[1];
 
-    for(int i = 0; i < 2; i++)
+    Item *item = (Item *)malloc(sizeof(Item));
+    
+    if(item == NULL)
     {
-        printf("%d\n", stats[i]);
+        fprintf(stderr, "Could not allocate space for the new weapon\n");
+        exit(1);
     }
+    
+    item->next = NULL;
+    // Before adding a new weapon sets the flag to all 0s
+    item->item_state = ITEM_RESET_MASK;
+    item->item_detail.wepaon_detail = ITEM_RESET_MASK;
+    
+    // get the index from the hash_function
+    uint8_t idx = hash_function(weapon_name, CAPACITY);    
+    
+    // copy the weapon_name 
+    int weapon_name_size = strlen(weapon_name) + 1;
+    item->name = (char *)malloc(sizeof(char) * weapon_name_size);
+    
+    if(item->name == NULL)
+    {
+        fprintf(stderr, "Could not allocate space for the weapon's name\n");
+        exit(1);
+    }
+    
+    strncpy(item->name, weapon_name, weapon_name_size);
+    item->name[weapon_name_size - 1] = '\0';
+   
+    // Set default Item State (Item picked up and added to inventory)
+    item->item_state |= BIT(ITEM_ADDED_IDX);
+    // assign the 4 bits damage & 4 bits damage
+    item->item_detail.wepaon_detail = ITEM_D_COMBINE(left_value, right_value);
+
+    if(inventory->items[idx] == NULL)
+    {
+        inventory->items[idx] = item;
+    }
+    else
+    {
+        Item *current = inventory->items[idx];
+        while(current->next != NULL) current = current->next;
+        current->next = item;
+    }
+    
+    inventory->items_stored += 1;
+    free(stats);
 }
 
 /**
@@ -197,20 +265,228 @@ void add_weapon(Inventory *inventory, char *weapon_name, enum Weapons weapon)
 void add_consumable(Inventory *inventory, char *consumable_name, enum Consumables consumable)
 {
     uint8_t *cons_stats = map_consumable(consumable);
+    uint8_t left_value = cons_stats[0];
+    uint8_t right_value = cons_stats[1];
     
-    for(int i = 0; i < 2; i++)
+    Item *item = (Item *)malloc(sizeof(Item));
+
+    if(item == NULL)
     {
-        printf("%d\n", cons_stats[i]);
+        fprintf(stderr, "Could not allocate space for the new consumable\n");
+        exit(1);
     }
+
+    item->next = NULL;
+    item->item_state = ITEM_RESET_MASK;
+    item->item_detail.wepaon_detail = ITEM_RESET_MASK;
+
+    uint8_t idx = hash_function(consumable_name, CAPACITY);
+
+    int consumable_name_size = strlen(consumable_name) + 1;
+    item->name = (char *)malloc(sizeof(char) * consumable_name_size);
+
+    if(item->name == NULL)
+    {
+        fprintf(stderr, "Could not allocate space for the consumable_name's name\n");
+        exit(1);
+    }
+
+    strncpy(item->name, consumable_name, consumable_name_size);
+    item->name[consumable_name_size - 1] = '\0';
+
+    item->item_state |= BIT(ITEM_ADDED_IDX);
+    item->item_detail.consumable_detail = ITEM_D_COMBINE(left_value, right_value);
+
+    if(inventory->items[idx] == NULL)
+    {
+        inventory->items[idx] = item;
+    }
+    else
+    {
+        Item *current = inventory->items[idx];
+        while(current->next != NULL) current = current->next;
+        current->next = item;
+    }
+
+    inventory->items_stored += 1;
+    free(cons_stats);
 }
+
+/**
+ * @brief Finds a weapon by name
+ * @param Inventory inventory pointer
+ * @param char weapon_name pointer
+ * @return Item pointer
+ */
+Item *find_item(Inventory *inventory, char *item_name)
+{
+    uint8_t idx = hash_function(item_name, CAPACITY);
+    
+    if(inventory->items[idx] == NULL)
+    {
+        fprintf(stderr, "Could not find the item '%s' for in your inventory\n", item_name);
+        exit(1);
+    }
+    else
+    {
+        Item *head = inventory->items[idx];
+
+        if(strcmp(head->name, item_name) == 0) return head;
+        
+        else
+        {
+            while(head != NULL)
+            {
+                if(strcmp(head->name, item_name) == 0) return head;
+                head = head->next;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Equip a weapon from inventory
+ * @param Inventory inventory pointer
+ * @param char weapon_name pointer
+ * @return void
+ */
+void equip_weapon(Inventory *inventory, char *weapon_name)
+{
+    Item *weapon = find_item(inventory, weapon_name);  
+    
+    if((weapon->item_state & BIT(ITEM_EQUIP_IDX)) != 0)
+    {
+        printf("'%s' is already equipped\n", weapon_name);
+    }
+    else
+    {
+        weapon->item_state = ITEM_EQUIP_MASK;
+        weapon->item_state |= BIT(ITEM_EQUIP_IDX);
+        
+        if((weapon->item_state & BIT(ITEM_EQUIP_IDX)) != 0)
+        {
+            printf("'%s' equipped successfully\n", weapon_name);
+            // extract the stats from the selected weapon
+            uint8_t pow = ITEM_D_EXTRACT_LEFT(weapon->item_detail.wepaon_detail);
+            uint8_t dur = ITEM_D_EXTRACT_RIGHT(weapon->item_detail.wepaon_detail);
+            printf("Power     : %d\n", pow);
+            printf("Durability: %d\n", dur);
+        }
+        else
+        {
+            printf("There was an issue equipping '%s'\n", weapon_name);
+        }
+    }
+
+    BREAK;
+}
+
+/**
+ * @brief Prints the current player's stats 
+ * @param uint8_t ph 
+ * @param uint8_t pm 
+ * @return void
+ */
+void print_player_stats(uint8_t ph, uint8_t pm)
+{
+    printf("--- Player's Stats ---\n");
+    printf("Health : %d\n", ph);
+    printf("Magicka: %d\n", pm);
+    BREAK;
+}
+
+/**
+ * @brief Consumes an item from the inventory
+ * @param Inventory inventory pointer
+ * @param char consumable_name pointer
+ * @param uint8_t ph pointer
+ * @param uint8_t pm pointer
+ * @return void
+ */
+void use_consumable(Inventory *inventory, char *consumable_name, uint8_t *ph, uint8_t *pm, void(*on_consume)(uint8_t ph, uint8_t pm))
+{
+    Item *consumable = find_item(inventory, consumable_name);
+
+    uint8_t health = ITEM_D_EXTRACT_LEFT(consumable->item_detail.consumable_detail);
+    uint8_t magicka = ITEM_D_EXTRACT_RIGHT(consumable->item_detail.consumable_detail);
+   
+    // check if the player has enough magicka to consume the selected item
+    if(*pm - magicka < 0)
+    {
+        fprintf(stderr, "Not enough  magicka to consume the item\n");
+        return;
+    }
+
+    *ph += health;
+    *pm -= magicka;
+    inventory->items_stored -= 1; 
+
+    on_consume(*ph, *pm);
+}
+
+/**
+ * @brief Clens the allocated objects from Memory
+ * @param Inventory inventory pointer
+ * @return void
+ */
+void clean_mem(Inventory *inventory)
+{
+    for(int i = 0; i < CAPACITY; i++)
+    {
+        if(inventory->items[i] != NULL)
+        {
+            Item *current = inventory->items[i];
+            Item *next_item = NULL;
+
+            while(current != NULL)
+            {
+                next_item = current->next;
+                free(current->name);
+                free(current);
+                current = next_item;
+            }
+        }
+    }
+
+    free(inventory);
+    inventory = NULL;
+}
+
 
 int main(void)
 {
+    uint8_t player_health = 20;
+    uint8_t player_magicka = 10;
     Inventory *inventory = NULL;
     init_inventory(&inventory);
-    enum Weapons weapon = SWORD;
-    enum Consumables consumable = POTION;
-    add_weapon(inventory, "Sword", weapon);
-    add_consumable(inventory, "Health Potion", consumable);
+
+    enum Weapons sword = SWORD;
+    enum Weapons dagger = DAGGER;
+    enum Weapons axe = AXE;
+    enum Consumables potion = POTION;
+    enum Consumables dry_meat = SNACK;
+    
+    // Add weapons 
+    add_weapon(inventory, "Sword", sword);
+    add_weapon(inventory, "Dagger", dagger);
+    add_weapon(inventory, "Dawnbreaker", axe);
+    
+    // Equip a Weapon
+    equip_weapon(inventory, "Dawnbreaker");
+    equip_weapon(inventory, "Sword");
+    equip_weapon(inventory, "Sword");
+    
+    // Add Consumables
+    add_consumable(inventory, "Health Potion", potion);
+    add_consumable(inventory, "Dry Meat", dry_meat);
+   
+    // Use Consumable
+    use_consumable(inventory, "Health Potion", &player_health, &player_magicka, print_player_stats);
+    
+
+    // Clean up 
+    clean_mem(inventory);
     return 0;
 }
