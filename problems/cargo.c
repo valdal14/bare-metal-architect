@@ -87,7 +87,8 @@ typedef struct CargoQueue
  */
 uint8_t hash_function(const char *key, uint8_t capacity) {
     int hash = 0;
-    while (*key != '\0') {
+    while (*key != '\0') 
+    {
         hash = (hash + *key) % capacity;
         key++;
     }
@@ -277,8 +278,12 @@ void enqueue(CargoQueue *queue, char *code, CargoMaterial mat, uint8_t v1, uint8
 /**
  * @brief Authorises the ships to load the Container to the 
  * CargoBay.
- * @param CargoQueue queue pointer
- * @param CargoBay bay pointer
+ * * This function dequeues the first container from the queue array, shifts the 
+ * remaining elements forward to fill the gap, clears the trailing duplicate 
+ * pointer, and triggers the on_dequeue callback to process the container.
+ * * @param queue Pointer to the CargoQueue simulating the queue.
+ * @param bay Pointer to the CargoBay destination.
+ * @param on_dequeue Function pointer to the callback that handles the transfer.
  * @return void
  */
 void dequeue(CargoQueue *queue, CargoBay *bay, void(*on_dequeue)(CargoBay *bay, Container *container))
@@ -289,14 +294,24 @@ void dequeue(CargoQueue *queue, CargoBay *bay, void(*on_dequeue)(CargoBay *bay, 
         return;
     }
     
+    // Extract the container at the front of the queue
     Container *new_container = queue->queue[0];
+    // Decrement the size
     queue->size -= 1;
+    
+    // Shift all remaining container one step to the left
+    for(int i = 0; i < queue->size; i++) 
+    {
+        queue->queue[i] = queue->queue[i+1];
+    }
 
-    for(int i = 0; i < queue->size; i++)
-        if(queue->queue[i+1] != NULL) queue->queue[i] = queue->queue[i+1];
-
-
-    // callback and load the container to the CargoBay
+    // Clean up the trailing duplicate pointer at the end of the queue
+    queue->queue[queue->size] = NULL;
+    
+    // Print safely using the extracted pointer, NOT the array index
+    printf("%s\n", new_container->tracking_code);
+    
+    // Callback and load the container to the CargoBay
     on_dequeue(bay, new_container);
 }
  
@@ -438,7 +453,6 @@ int main(void)
     enqueue(cargo_queue, "MACHI-4", MAT_MAC, 7, 13);
     enqueue(cargo_queue, "BIOEN-4", MAT_BIO, 1, 0);
 
-    
     // Dequeue Container from CargoQueue and load it to the CargoBay 
     dequeue(cargo_queue, cargo_bay, load);
     dequeue(cargo_queue, cargo_bay, load);
