@@ -10,9 +10,9 @@
 
 #define BIT(x) (1 << (x))
 #define IN_QUEUE_IDX 0 
-#define INSPECTED_IDX 2
-#define QUARANTINE_IDX 4
-#define DEPARTURE_IDX 8
+#define INSPECTED_IDX 1 
+#define QUARANTINE_IDX 3
+#define DEPARTURE_IDX 7
 #define RESET_STATE 0x00 
 #define DEFAULT_MAT_MASK 0x00 
 #define MAT_L_MASK 0xF0
@@ -22,7 +22,7 @@
 #define MAT_EXTRACT_LEFT(val) (((uint8_t)(val) & MAT_L_MASK) >> MAT_OFFSET)
 #define MAT_EXTRACT_RIGHT(val) ((uint8_t)(val) & MAT_R_MASK)
 
-typedef struct TrackingCode
+typedef struct
 {
     char *code;
     uint8_t size;
@@ -34,7 +34,7 @@ typedef enum CargoMaterial
     MAT_MAC
 } CargoMaterial;
 
-typedef union Material
+union Material
 {
     /**
      * Biological States
@@ -48,7 +48,7 @@ typedef union Material
      * Voltage:     4 Bits
      */
     uint8_t machinery;
-} Material;
+};
 
 typedef struct Container
 {
@@ -66,13 +66,13 @@ typedef struct Container
 
 } Container;
 
-typedef struct CargoBay
+typedef struct
 {
     Container **rails;
     uint8_t capacity;
 } CargoBay;
 
-typedef struct CargoQueue
+typedef struct
 {
     Container *queue[CARGO_QUEUE_CAPACITY];
     uint8_t capacity;
@@ -139,6 +139,10 @@ void load(CargoBay *bay, Container *container)
     if((container->container_state & BIT(INSPECTED_IDX)) == 0)
     {
         fprintf(stderr, "Expected Container's state to be INSPECTED. The container will be discarded\n");
+        free(container->tracking_code);
+        free(container);
+        free(tc->code);
+        free(tc);
         return;
     }
 
@@ -155,6 +159,7 @@ void load(CargoBay *bay, Container *container)
         current->next = container;
     }
 
+    free(tc->code);
     free(tc);
 }
 
@@ -308,9 +313,6 @@ void dequeue(CargoQueue *queue, CargoBay *bay, void(*on_dequeue)(CargoBay *bay, 
     // Clean up the trailing duplicate pointer at the end of the queue
     queue->queue[queue->size] = NULL;
     
-    // Print safely using the extracted pointer, NOT the array index
-    printf("%s\n", new_container->tracking_code);
-    
     // Callback and load the container to the CargoBay
     on_dequeue(bay, new_container);
 }
@@ -382,6 +384,23 @@ void print(Container *container, uint8_t rail_id)
     while(current != NULL)
     {
         printf("TC: %s\n", current->tracking_code);
+        
+        if(current->tracking_code[0] == 'B')
+        {
+            uint8_t b1 = MAT_EXTRACT_LEFT(current->container_material.biological);
+            uint8_t b2 = MAT_EXTRACT_RIGHT(current->container_material.biological);
+            if(b1 != 0) printf("Biological Temperature: %d\n", b1);
+            if(b2 != 0) printf("Biological Oxygen     : %d\n", b2);
+        }
+
+        if(current->tracking_code[0] == 'M')
+        {
+            uint8_t m1 = MAT_EXTRACT_LEFT(current->container_material.machinery);
+            uint8_t m2 = MAT_EXTRACT_RIGHT(current->container_material.machinery);
+            if(m1 != 0) printf("Machinery Weight      : %d\n", m1);
+            if(m2 != 0) printf("Machinery Voltage     : %d\n", m2);
+        }
+
         current = current->next;
     }
 
@@ -433,6 +452,43 @@ void show_rails_status(CargoBay *bay)
     } 
 }
 
+/**
+ * @brief Cleans up the entire simulation, freeing all allocated memory
+ *
+ * @param CargoBay bay pointer to the head of the CargoBay's LL
+ * @param CargoQueue queue pointer
+ * @return void
+ */
+void clean(CargoBay *bay, CargoQueue *queue)
+{
+    for(int i = 0; i < CARGO_RAILS_CAPACITY; i++)
+    {
+        if(bay->rails[i] != NULL)
+        {
+            Container *current = bay->rails[i];
+            Container *next_container = NULL;
+            
+            while(current != NULL)
+            {
+                next_container = current->next;
+                free(current->tracking_code);
+                free(current);
+                current = next_container;
+            }
+        }
+    }
+
+    for(int i = 0; i < CARGO_QUEUE_CAPACITY; i++)
+    {
+        if(queue->queue[i] != NULL) free(queue->queue[i]);
+    } 
+    
+    free(bay);
+    bay = NULL;
+    free(queue);
+    queue = NULL;
+}
+
 int main(void)
 {
     // Init CargoBay
@@ -472,7 +528,7 @@ int main(void)
     show_rails_status(cargo_bay);
 
     // Memory Cleanup process 
-    //clean(cargo_bay, cargo_queue);
+    clean(cargo_bay, cargo_queue);
 
     return 0;
 }
