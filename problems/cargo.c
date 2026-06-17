@@ -10,9 +10,17 @@
 
 #define BIT(x) (1 << (x))
 #define IN_QUEUE_IDX 0 
+#define INSPECTED_IDX 2
 #define QUARANTINE_IDX 4
+#define DEPARTURE_IDX 8
+#define RESET_STATE 0x00 
 #define DEFAULT_MAT_MASK 0x00 
-
+#define MAT_L_MASK 0xF0
+#define MAT_R_MASK 0x0F 
+#define MAT_OFFSET 4
+#define MAT_COMBINE(left, right) ((((uint8_t)(left) << MAT_OFFSET) & MAT_L_MASK) | ((uint8_t)(right) & MAT_R_MASK))
+#define MAT_EXTRACT_LEFT(val) (((uint8_t)(val) & MAT_L_MASK) >> MAT_OFFSET)
+#define MAT_EXTRACT_RIGHT(val) ((uint8_t)(val) & MAT_R_MASK)
 
 typedef struct TrackingCode
 {
@@ -30,14 +38,14 @@ typedef union Material
 {
     /**
      * Biological States
-     * Temperature: Bit 2
-     * Oxygen:      Bit 4
+     * Temperature: 4 Bits 
+     * Oxygen:      4 Bits
      */
     uint8_t biological;
     /**
      * Machinery States 
-     * Weight:      Bit 2
-     * Voltage:     Bit 4 
+     * Weight:      4 Bits
+     * Voltage:     4 Bits
      */
     uint8_t machinery;
 } Material;
@@ -117,12 +125,76 @@ TrackingCode *validate_tc(char *tracking_code)
 }
 
 /**
+ * @brief Loads the dequeued Container to the CargoBay
+ * @param CargoBay bay pointer
+ * @param Container container pointer 
+ * @return void
+ */
+void load(CargoBay *bay, Container *container)
+{
+    TrackingCode *tc = validate_tc(container->tracking_code);
+    uint8_t idx = hash_function(container->tracking_code, CARGO_RAILS_CAPACITY);
+    printf("idx = %d\n", idx);
+}
+
+/**
+ * @brief Inspects the incoming container.
+ * If the container_state is in QUEUE state the container
+ * can be loaded otherwise it will be placed in Quarantine.
+ * @param Container container pointer
+ * @param CargoMaterial mat
+ * @return void
+ */
+void inspect(Container *container, CargoMaterial mat)
+{
+    int quarantine = 0;
+
+    if((container->container_state & BIT(IN_QUEUE_IDX)) == 0)
+    {
+        fprintf(stderr, "Expected Container's state to be QUEUE. The container will be placed in Quarantine state\n");
+        container->container_state = RESET_STATE;
+        container->container_state |= BIT(QUARANTINE_IDX);
+    }
+
+    switch(mat)
+    {
+        case MAT_BIO:
+        {
+            uint8_t b1 = MAT_EXTRACT_LEFT(container->container_material.biological);
+            uint8_t b2 = MAT_EXTRACT_RIGHT(container->container_material.biological);
+            if(b1 == 0 || b2 == 0) quarantine += 1;
+            break;
+        }
+        case MAT_MAC:
+        {    
+            uint8_t m1 = MAT_EXTRACT_LEFT(container->container_material.machinery);
+            uint8_t m2 = MAT_EXTRACT_RIGHT(container->container_material.machinery);
+            if(m1 == 0 || m2 == 0) quarantine += 1;
+            break;
+        }
+        default:
+            fprintf(stderr, "Unidentified Material, the container will be placed in Quarantine state\n");
+            quarantine += 1;
+            break;
+    }
+
+    if(quarantine == 1)
+    {
+        container->container_state |= BIT(QUARANTINE_IDX);
+        container->container_state = RESET_STATE;
+    }
+}
+
+/**
  * @brief Adds a new Container to the CargoQueue before the inspection phase
  * @param CargoQueue queue pointer
  * @param char code pointer
  * @param CargoMaterial mat 
+ * @param uint8_t v1 
+ * @param uint8_t v2
+ * @return void
  */
-void enqueue(CargoQueue *queue, char *code, CargoMaterial mat)
+void enqueue(CargoQueue *queue, char *code, CargoMaterial mat, uint8_t v1, uint8_t v2)
 {
     if(queue->size + 1 > CARGO_QUEUE_CAPACITY)
     {
@@ -155,15 +227,22 @@ void enqueue(CargoQueue *queue, char *code, CargoMaterial mat)
     {
         case MAT_BIO:
             container->container_state |= BIT(IN_QUEUE_IDX);
+            container->container_material.biological = MAT_COMBINE(v1, v2);
             break;
         case MAT_MAC:
             container->container_state |= BIT(IN_QUEUE_IDX);
+            container->container_material.machinery = MAT_COMBINE(v1, v2);
             break;
         default:
             fprintf(stderr, "Unidentified Material: Container in Quarantine\n");
             container->container_state |= BIT(QUARANTINE_IDX);
+            break;
     }
+  
+    // inspect the current container
+    inspect(container, mat);
 
+    // add the container to the CargoQueue
     queue->queue[queue->size] = container;
     queue->size += 1;
 
@@ -177,7 +256,7 @@ void enqueue(CargoQueue *queue, char *code, CargoMaterial mat)
  * @param CargoBay bay pointer
  * @return void
  */
-void dequeue(CargoQueue *queue, CargoBay *bay)
+void dequeue(CargoQueue *queue, CargoBay *bay, void(*on_dequeue)(CargoBay *bay, Container *container))
 {
     if(queue->size == 0)
     {
@@ -191,6 +270,9 @@ void dequeue(CargoQueue *queue, CargoBay *bay)
     
     for(int i = 0; i < queue->size; i++)
         if(queue->queue[i+1] != NULL) queue->queue[i] = queue->queue[i+1];
+
+    // callback and load the container to the CargoBay
+    on_dequeue(bay, new_container);
 }
  
 
@@ -254,28 +336,12 @@ int main(void)
     CargoQueue *cargo_queue = NULL;
     init_cargo_queue(&cargo_queue);
     // Depositing the container to the CargoQueue
-    enqueue(cargo_queue, "ALPHA-0", MAT_BIO);
-    enqueue(cargo_queue, "ALPHA-1", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-2", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-3", MAT_BIO);
-    enqueue(cargo_queue, "ALPHA-4", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-5", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-6", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-7", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-8", MAT_MAC);
-    enqueue(cargo_queue, "ALPHA-9", MAT_MAC);
+    enqueue(cargo_queue, "BIOEN-0", MAT_BIO, 9, 6);
+    enqueue(cargo_queue, "MACHI-0", MAT_MAC, 8, 15);
     
-    // Dequeue CargoQueue
-    dequeue(cargo_queue, cargo_bay);
-    dequeue(cargo_queue, cargo_bay);
-    dequeue(cargo_queue, cargo_bay);
-    dequeue(cargo_queue, cargo_bay);
-    dequeue(cargo_queue, cargo_bay);
-    dequeue(cargo_queue, cargo_bay);
+    // Dequeue Container from CargoQueue and load it to the CargoBay 
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
      
-    for(int i = 0; i < cargo_queue->size; i++)
-        printf("%s\n", cargo_queue->queue[i]->tracking_code);
-   
-
     return 0;
 }
