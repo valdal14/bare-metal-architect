@@ -133,12 +133,33 @@ TrackingCode *validate_tc(char *tracking_code)
 void load(CargoBay *bay, Container *container)
 {
     TrackingCode *tc = validate_tc(container->tracking_code);
-    uint8_t idx = hash_function(container->tracking_code, CARGO_RAILS_CAPACITY);
-    printf("idx = %d\n", idx);
+    uint8_t idx = hash_function(tc->code, CARGO_RAILS_CAPACITY);
+
+    if((container->container_state & BIT(INSPECTED_IDX)) == 0)
+    {
+        fprintf(stderr, "Expected Container's state to be INSPECTED. The container will be discarded\n");
+        return;
+    }
+
+    if(bay->rails[idx] == NULL)
+    {
+        bay->rails[idx] = container;
+    }
+    else
+    {
+        Container *current = bay->rails[idx];
+        while(current->next != NULL) current = current->next;
+        container->container_state = RESET_STATE;
+        container->container_state |= BIT(DEPARTURE_IDX);
+        current->next = container;
+    }
+
+    free(tc);
 }
 
 /**
- * @brief Inspects the incoming container.
+ * @brief Inspects the incoming container and change its state to INSPECTED
+ * if the container is valid otherwise sets its state to QUARANTINE
  * If the container_state is in QUEUE state the container
  * can be loaded otherwise it will be placed in Quarantine.
  * @param Container container pointer
@@ -152,8 +173,7 @@ void inspect(Container *container, CargoMaterial mat)
     if((container->container_state & BIT(IN_QUEUE_IDX)) == 0)
     {
         fprintf(stderr, "Expected Container's state to be QUEUE. The container will be placed in Quarantine state\n");
-        container->container_state = RESET_STATE;
-        container->container_state |= BIT(QUARANTINE_IDX);
+        quarantine = 1;
     }
 
     switch(mat)
@@ -162,26 +182,31 @@ void inspect(Container *container, CargoMaterial mat)
         {
             uint8_t b1 = MAT_EXTRACT_LEFT(container->container_material.biological);
             uint8_t b2 = MAT_EXTRACT_RIGHT(container->container_material.biological);
-            if(b1 == 0 || b2 == 0) quarantine += 1;
+            if(b1 == 0 || b2 == 0) quarantine = 1;
             break;
         }
         case MAT_MAC:
         {    
             uint8_t m1 = MAT_EXTRACT_LEFT(container->container_material.machinery);
             uint8_t m2 = MAT_EXTRACT_RIGHT(container->container_material.machinery);
-            if(m1 == 0 || m2 == 0) quarantine += 1;
+            if(m1 == 0 || m2 == 0) quarantine = 1;
             break;
         }
         default:
             fprintf(stderr, "Unidentified Material, the container will be placed in Quarantine state\n");
-            quarantine += 1;
+            quarantine = 1;
             break;
     }
 
     if(quarantine == 1)
     {
-        container->container_state |= BIT(QUARANTINE_IDX);
         container->container_state = RESET_STATE;
+        container->container_state |= BIT(QUARANTINE_IDX);
+    }
+    else
+    {
+        container->container_state = RESET_STATE;
+        container->container_state |= BIT(INSPECTED_IDX);
     }
 }
 
@@ -338,8 +363,25 @@ int main(void)
     // Depositing the container to the CargoQueue
     enqueue(cargo_queue, "BIOEN-0", MAT_BIO, 9, 6);
     enqueue(cargo_queue, "MACHI-0", MAT_MAC, 8, 15);
+    enqueue(cargo_queue, "MACHI-1", MAT_MAC, 7, 13);
+    enqueue(cargo_queue, "MACHI-2", MAT_MAC, 6, 12);
+    enqueue(cargo_queue, "BIOEN-1", MAT_BIO, 12, 4);
+    enqueue(cargo_queue, "MACHI-3", MAT_MAC, 4, 8);
+    enqueue(cargo_queue, "BIOEN-2", MAT_BIO, 15, 15);
+    enqueue(cargo_queue, "BIOEN-3", MAT_BIO, 13, 10);
+    enqueue(cargo_queue, "MACHI-4", MAT_MAC, 7, 13);
+    enqueue(cargo_queue, "BIOEN-4", MAT_BIO, 1, 0);
+
     
     // Dequeue Container from CargoQueue and load it to the CargoBay 
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
+    dequeue(cargo_queue, cargo_bay, load);
     dequeue(cargo_queue, cargo_bay, load);
     dequeue(cargo_queue, cargo_bay, load);
      
