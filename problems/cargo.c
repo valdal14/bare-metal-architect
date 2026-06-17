@@ -290,11 +290,11 @@ void dequeue(CargoQueue *queue, CargoBay *bay, void(*on_dequeue)(CargoBay *bay, 
     }
     
     Container *new_container = queue->queue[0];
-    queue->queue[0] = NULL;
     queue->size -= 1;
-    
+
     for(int i = 0; i < queue->size; i++)
         if(queue->queue[i+1] != NULL) queue->queue[i] = queue->queue[i+1];
+
 
     // callback and load the container to the CargoBay
     on_dequeue(bay, new_container);
@@ -352,6 +352,72 @@ void init_cargo_bay(CargoBay **bay)
     *bay = cargo_bay;
 }
 
+/**
+ * @brief Prints the information from the given container
+ * @param Container container pointer
+ * @param uint8_t rail_id
+ * @return void
+ */
+void print(Container *container, uint8_t rail_id)
+{
+    printf("\n--- RAIL[%d] Containers ---\n", rail_id);
+
+    Container *current = container;
+    
+    while(current != NULL)
+    {
+        printf("TC: %s\n", current->tracking_code);
+        current = current->next;
+    }
+
+    printf("--------------------------\n");
+}
+
+/**
+ * @brief Prints out the Departured Container from a single rail
+ * @param CargoBay bay pointer
+ * @param uint8_t rail_id
+ * @return void
+ */
+void process(CargoBay *bay, uint8_t rail_id)
+{
+    if((rail_id >= 0 && rail_id <= 3) && bay->rails[rail_id] != NULL)
+    {
+        print(bay->rails[rail_id], rail_id);
+    }
+    else
+    {
+        fprintf(stderr, "Invalid ior empty Rail ID. Valid ID are 0 up to 3 included\n");
+        return;
+    }
+}
+
+/**
+ * @brief Prints all current processed containers
+ * @param CargoBay bay pointer
+ * @return void
+ */
+void show_rails_status(CargoBay *bay)
+{
+    printf("\n--- ALL RAILS STATUS ---\n");
+
+    for(int i = 0; i < CARGO_RAILS_CAPACITY; i++)
+    {
+        if(bay->rails[i] != NULL)
+        {
+            printf("RAIL[%d]:\n", i);
+            Container *current = bay->rails[i];
+            
+            while(current != NULL)
+            {
+                printf("\t%s\n", current->tracking_code);
+                current = current->next;
+            }
+        }
+        printf("------------------------\n");
+    } 
+}
+
 int main(void)
 {
     // Init CargoBay
@@ -384,6 +450,15 @@ int main(void)
     dequeue(cargo_queue, cargo_bay, load);
     dequeue(cargo_queue, cargo_bay, load);
     dequeue(cargo_queue, cargo_bay, load);
-     
+    
+    // Show single Rail
+    process(cargo_bay, 3);
+
+    // Show all rails 
+    show_rails_status(cargo_bay);
+
+    // Memory Cleanup process 
+    //clean(cargo_bay, cargo_queue);
+
     return 0;
 }
