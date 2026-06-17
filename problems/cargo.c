@@ -60,17 +60,31 @@ typedef struct Container
 
 typedef struct CargoBay
 {
-    uint8_t **rails;
+    Container **rails;
     uint8_t capacity;
 } CargoBay;
 
 typedef struct CargoQueue
 {
-    Container queue[CARGO_QUEUE_CAPACITY];
+    Container *queue[CARGO_QUEUE_CAPACITY];
     uint8_t capacity;
     uint8_t size;
 } CargoQueue;
 
+/**
+ * @brief Hashes a string key into a valid array index.
+ * @param key The string to hash.
+ * @param uint8_t capacity The size of the hash table array.
+ * @return uint8_t The calculated index.
+ */
+uint8_t hash_function(const char *key, uint8_t capacity) {
+    int hash = 0;
+    while (*key != '\0') {
+        hash = (hash + *key) % capacity;
+        key++;
+    }
+    return hash;
+}
 
 /**
  * @brief Validates the incoming tracking code from the CargoBay
@@ -124,9 +138,8 @@ void enqueue(CargoQueue *queue, char *code, CargoMaterial mat)
         return;
     }
 
-
+    // Validates the incoming container
     TrackingCode *tc = validate_tc(code);
-
     container->tracking_code = (char *)malloc(sizeof(char) * tc->size);
     container->next = NULL;
 
@@ -151,42 +164,118 @@ void enqueue(CargoQueue *queue, char *code, CargoMaterial mat)
             container->container_state |= BIT(QUARANTINE_IDX);
     }
 
-    queue->queue[queue->size] = *container;
+    queue->queue[queue->size] = container;
     queue->size += 1;
 
     free(tc);
-    free(container);
 }
 
-/*
-void dequeue()
+/**
+ * @brief Authorises the ships to load the Container to the 
+ * CargoBay.
+ * @param CargoQueue queue pointer
+ * @param CargoBay bay pointer
+ * @return void
+ */
+void dequeue(CargoQueue *queue, CargoBay *bay)
 {
-
+    if(queue->size == 0)
+    {
+        fprintf(stderr, "The CargoQueue is empty, there are no ships waiting to deposit a container\n");
+        return;
+    }
+    
+    Container *new_container = queue->queue[0];
+    queue->queue[0] = NULL;
+    queue->size -= 1;
+    
+    for(int i = 0; i < queue->size; i++)
+        if(queue->queue[i+1] != NULL) queue->queue[i] = queue->queue[i+1];
 }
-*/ 
+ 
 
+/**
+ * @brief Inits the CargoQueue. The CargoQueue simulates the 
+ * place in the space station where ships stops before delivering
+ * the container their are carrying.
+ * @param CargoQueue queue double pointer
+ * @return void
+ */
 void init_cargo_queue(CargoQueue **queue)
 {
     CargoQueue *cargo_queue = (CargoQueue *)calloc(1, sizeof(CargoQueue));
+    
     if(cargo_queue == NULL)
     {
         fprintf(stderr, "Platform down, cannot load any Container, please come back later\n");
         exit(1);
     }
+    
     cargo_queue->capacity = CARGO_QUEUE_CAPACITY;
     cargo_queue->size = 0;
 
     *queue = cargo_queue;
 }
 
+/**
+ * @brief Inits the CargoBay. The CargoBay is the place where inspected container 
+ * are positioned. The CargoBay has 4 rails where the container are positioned 
+ * after the are dequeued from the CargoQueue
+ * @param CargoBay bay double pointer
+ * @return void
+ */
+void init_cargo_bay(CargoBay **bay)
+{
+    CargoBay *cargo_bay = (CargoBay *)calloc(1, sizeof(CargoBay));
+    
+    if(cargo_bay == NULL)
+    {
+        fprintf(stderr, "The CargoBay could not be instanciated\n");
+        exit(1);
+    }
+    
+    cargo_bay->capacity = CARGO_RAILS_CAPACITY;
+    cargo_bay->rails = (Container **)calloc(cargo_bay->capacity, sizeof(Container *));
+    if(cargo_bay->rails == NULL)
+    {
+        fprintf(stderr, "CargoBay's Rails could not be instanciated\n");
+        exit(1);
+    }
+
+    *bay = cargo_bay;
+}
+
 int main(void)
 {
+    // Init CargoBay
+    CargoBay *cargo_bay = NULL;
+    init_cargo_bay(&cargo_bay);
+    // Init CargoQueue
     CargoQueue *cargo_queue = NULL;
     init_cargo_queue(&cargo_queue);
-    printf("Allocated at %p\n", cargo_queue);
+    // Depositing the container to the CargoQueue
+    enqueue(cargo_queue, "ALPHA-0", MAT_BIO);
+    enqueue(cargo_queue, "ALPHA-1", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-2", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-3", MAT_BIO);
+    enqueue(cargo_queue, "ALPHA-4", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-5", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-6", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-7", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-8", MAT_MAC);
+    enqueue(cargo_queue, "ALPHA-9", MAT_MAC);
+    
+    // Dequeue CargoQueue
+    dequeue(cargo_queue, cargo_bay);
+    dequeue(cargo_queue, cargo_bay);
+    dequeue(cargo_queue, cargo_bay);
+    dequeue(cargo_queue, cargo_bay);
+    dequeue(cargo_queue, cargo_bay);
+    dequeue(cargo_queue, cargo_bay);
+     
+    for(int i = 0; i < cargo_queue->size; i++)
+        printf("%s\n", cargo_queue->queue[i]->tracking_code);
+   
 
-    enqueue(cargo_queue, "ALPHA-7", MAT_BIO);
-    printf("%s\n", cargo_queue->queue[0].tracking_code);
-    printf("%d\n", cargo_queue->size);
     return 0;
 }
