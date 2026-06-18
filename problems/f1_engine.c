@@ -96,6 +96,12 @@ char *map_engine(F1Type type)
     return engine_str;
 }
 
+/**
+ * @brief Inits either a RADIO or ANALYTIC engine
+ * @param void engine double pointer
+ * @param F1Type type
+ * @return void
+ */
 void init(void **engine, F1Type type)
 {
     if((TelemetryPacket *)engine != NULL)
@@ -154,8 +160,5 @@ int main(void)
     F1Type t2 = ANALY;
     init((void **)&radio, t1);
     init((void **)&analytics, t2);
-    init((void **)NULL, t2);
-    printf("Allocated at %p\n", radio); 
-    printf("Allocated at %p\n", analytics); 
     return 0;
 }
