@@ -14,12 +14,12 @@ typedef struct
     double timestamp; 
     // 8 - 11 = (4 bytes)
     uint32_t raw_payload; 
-    // 9 = (1 byte)
+    // 12 = (1 byte)
     uint8_t checksum; 
-    // 10 - 11 = (2 bytes)
-    uint16_t sensor_id; 
-    // 12 = (1 byte) 
+    // 13 = (1 bytes)
     uint8_t status_flag;
+    // 14 - 15 = (2 byte)
+    uint16_t sensor_id;  
     // Total Bytes: 16 (double 8 x 2 = 16 no Tail padding)
 
 } TelemetryPacket;
@@ -51,7 +51,7 @@ typedef struct
  */
 float get_tire_temp(uint32_t raw_payload)
 {
-    uint32_t result;
+    float result;
     memcpy(&result, &raw_payload, sizeof(float));
     return result;
 }
