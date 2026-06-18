@@ -4,7 +4,9 @@
 #include <string.h>
 
 #define ENGINE_STR_SIZE 6
-#define DB_CAPACITY 10 
+#define DB_CAPACITY 8
+#define BIT(x) (1 << (x))
+#define DEFAULT_FLAG_MASK 0x0F
 
 typedef struct
 {
@@ -31,11 +33,13 @@ typedef enum
 typedef struct
 {
     TelemetryPacket *src; 
+    uint8_t size;
 } Radio;
 
 typedef struct
 {
     TelemetryPacket *dest;
+    uint8_t size;
 } Analytics;
 
 /**
@@ -117,24 +121,24 @@ void init(void **engine, F1Type type)
         switch(type)
         {
             case RADIO:
-                printf("RADIO\n");
                 Radio *radio = (Radio *)calloc(1, sizeof(Radio));
                 if(radio == NULL)
                 {
                     fprintf(stderr, "Could not allocate space for the new RADIO\n");
                     exit(1);
                 }
+                radio->size = 0;
                 radio->src = db;
                 *engine = radio;
                 break;
             case ANALY:
-                printf("ANALY\n");
                 Analytics *analytics = (Analytics *)calloc(1, sizeof(Analytics));
                 if(analytics == NULL)
                 {
                     fprintf(stderr, "Could not allocate space for the new ANALYTIC\n");
                     exit(1);
                 }
+                analytics->size = 0;
                 analytics->dest = db;
                 *engine = analytics;
                 break;
@@ -152,13 +156,95 @@ void init(void **engine, F1Type type)
     }
 }
 
+/**
+ * @brief Recursively add N packets to the destination TelemetryPacket array by incrementing 
+ * the value of each variable for each iteration. 
+ * @param Radio radio pointer
+ * @param uint16_t id: sensor_id 
+ * @param double ts: timestamp
+ * @param uint32_t raw_data: raw_payload
+ * @param uint8_t cs: checksum
+ * @param uint8_t n: number of iteration
+ * @param uint8_t i: start index must be 0  
+ * @return uint8_t: 0 if failed 1 if success 
+ */ 
+uint8_t add_radio_packet(Radio *radio, uint16_t id, double ts, uint32_t raw_data, uint8_t cs, uint8_t n, uint8_t i) 
+{
+    if(n >= DB_CAPACITY)
+    {
+        fprintf(stderr, "The radio signal batch process size is too big\n");
+        exit(1);
+    }
+
+    if(n == 0)
+    {
+        if(radio->size == i)
+            return 1;
+        else
+            return 0;
+    }
+    
+    radio->src[i].sensor_id = id + i;
+    radio->src[i].timestamp = ts + i; 
+    radio->src[i].raw_payload = raw_data + i; 
+    radio->src[i].checksum = cs + i;
+    radio->src[i].status_flag = DEFAULT_FLAG_MASK;
+    radio->size += 1;
+    
+    if(n % 2 == 0)
+        radio->src[i].status_flag |= BIT(1);
+    else
+        radio->src[i].status_flag ^= BIT(1);
+    
+    // Recursively add new packets 
+    return add_radio_packet(radio, 
+            radio->src[i].sensor_id, 
+            radio->src[i].timestamp, 
+            radio->src[i].raw_payload, 
+            radio->src[i].checksum, 
+            (n - 1), 
+            (i + 1)
+    );
+}
+
+/**
+ * @brief Verifies the result of the Radio batch process
+ * @param Radio radio pointer
+ * @param uint8_t result
+ * @return void
+ */
+void verify_radio_batch(Radio *radio, uint8_t result)
+{
+    if(result == 1)
+    {
+        printf("RADIO batch process completed with success state\n");
+        
+        for(int i = 0; i < radio->size; i++)
+        { 
+            printf("PACKID[%d] = %d -> ", i, radio->src[i].sensor_id);
+            printf("STATUS[%d] = %d\n", i, (radio->src[i].status_flag & BIT(1)));
+        }
+    }
+    else
+    {
+        printf("RADIO batch process FAILED!!!\n");
+    }
+}
+
 int main(void)
 {
     Radio *radio = NULL;
     F1Type t1 = RADIO;
     Analytics *analytics = NULL;
     F1Type t2 = ANALY;
+    // Init RADIO
     init((void **)&radio, t1);
+    // Init ANALYTIC
     init((void **)&analytics, t2);
+
+    // Batch Radio Process
+    uint8_t batch_res = add_radio_packet(radio, 1, 10, 2, 1, 7, 0);
+    verify_radio_batch(radio, batch_res);
+
     return 0;
 }
