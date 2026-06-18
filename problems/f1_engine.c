@@ -51,20 +51,22 @@ typedef struct
  */
 float get_tire_temp(uint32_t raw_payload)
 {
-   return 0.0;
+    uint32_t result;
+    memcpy(&result, &raw_payload, sizeof(float));
+    return result;
 }
 
 /**
  * @brief Reads packets from the source and copies 
  * the packets into the analytics.
- * @param TelemetryPacket dest pointer
- * @param const TelemetryPacket src pointer
- * @param size_t count 
+ * @param Radio radio pointer
+ * @param const Analytics analytics pointer
  * @return void
  */
-void batch_copy(TelemetryPacket *dest, const TelemetryPacket *src, size_t count)
+void batch_copy(Radio *radio, Analytics *analytics)
 {
-
+    for (size_t i = 0; i < radio->size; i++) 
+        memmove((TelemetryPacket *)&analytics->dest[i], (TelemetryPacket *)&radio->src[i], sizeof(TelemetryPacket)); 
 }
 
 /**
@@ -121,6 +123,7 @@ void init(void **engine, F1Type type)
         switch(type)
         {
             case RADIO:
+            {
                 Radio *radio = (Radio *)calloc(1, sizeof(Radio));
                 if(radio == NULL)
                 {
@@ -131,7 +134,9 @@ void init(void **engine, F1Type type)
                 radio->src = db;
                 *engine = radio;
                 break;
+            }
             case ANALY:
+            {
                 Analytics *analytics = (Analytics *)calloc(1, sizeof(Analytics));
                 if(analytics == NULL)
                 {
@@ -142,6 +147,7 @@ void init(void **engine, F1Type type)
                 analytics->dest = db;
                 *engine = analytics;
                 break;
+            }
             default:
                 fprintf(stderr, "TYPE-ERROR: Unsupported type\n");
                 exit(1);
@@ -160,15 +166,14 @@ void init(void **engine, F1Type type)
  * @brief Recursively add N packets to the destination TelemetryPacket array by incrementing 
  * the value of each variable for each iteration. 
  * @param Radio radio pointer
- * @param uint16_t id: sensor_id 
+ * @param uint16_t id: sensor_id: Must start at 0  
  * @param double ts: timestamp
  * @param uint32_t raw_data: raw_payload
  * @param uint8_t cs: checksum
  * @param uint8_t n: number of iteration
- * @param uint8_t i: start index must be 0  
- * @return uint8_t: 0 if failed 1 if success 
+ * @return uint8_t: 0 if failed 1 if success
  */ 
-uint8_t add_radio_packet(Radio *radio, uint16_t id, double ts, uint32_t raw_data, uint8_t cs, uint8_t n, uint8_t i) 
+uint8_t add_radio_packet(Radio *radio, uint16_t id, double ts, float raw_data, uint8_t cs, uint8_t n) 
 {
     if(n >= DB_CAPACITY)
     {
@@ -178,56 +183,85 @@ uint8_t add_radio_packet(Radio *radio, uint16_t id, double ts, uint32_t raw_data
 
     if(n == 0)
     {
-        if(radio->size == i)
+        if(radio->size == id)
             return 1;
         else
             return 0;
     }
     
-    radio->src[i].sensor_id = id + i;
-    radio->src[i].timestamp = ts + i; 
-    radio->src[i].raw_payload = raw_data + i; 
-    radio->src[i].checksum = cs + i;
-    radio->src[i].status_flag = DEFAULT_FLAG_MASK;
+    radio->src[id].sensor_id = id;
+    radio->src[id].timestamp = ts + id; 
+    radio->src[id].raw_payload = get_tire_temp(raw_data + id); 
+    radio->src[id].checksum = cs + id;
+    radio->src[id].status_flag = DEFAULT_FLAG_MASK;
     radio->size += 1;
     
     if(n % 2 == 0)
-        radio->src[i].status_flag |= BIT(1);
+        radio->src[id].status_flag |= BIT(1);
     else
-        radio->src[i].status_flag ^= BIT(1);
-    
+        radio->src[id].status_flag ^= BIT(1);
+   
     // Recursively add new packets 
     return add_radio_packet(radio, 
-            radio->src[i].sensor_id, 
-            radio->src[i].timestamp, 
-            radio->src[i].raw_payload, 
-            radio->src[i].checksum, 
-            (n - 1), 
-            (i + 1)
+            (id + 1), 
+            radio->src[id].timestamp, 
+            radio->src[id].raw_payload, 
+            radio->src[id].checksum, 
+            (n - 1)
     );
 }
 
 /**
  * @brief Verifies the result of the Radio batch process
- * @param Radio radio pointer
+ * @param void pointer
  * @param uint8_t result
+ * @param F1Type type 
+ * @param uint8_t size 
  * @return void
  */
-void verify_radio_batch(Radio *radio, uint8_t result)
+void verify_batch(void *engine, uint8_t result, F1Type type, uint8_t size)
 {
-    if(result == 1)
+    if(result == 0) 
     {
-        printf("RADIO batch process completed with success state\n");
-        
-        for(int i = 0; i < radio->size; i++)
-        { 
-            printf("PACKID[%d] = %d -> ", i, radio->src[i].sensor_id);
-            printf("STATUS[%d] = %d\n", i, (radio->src[i].status_flag & BIT(1)));
-        }
+        fprintf(stderr, "Batch Processed Failed\n");
+        exit(1);
     }
-    else
+
+    switch(type)
     {
-        printf("RADIO batch process FAILED!!!\n");
+        case RADIO:
+            if((Radio *)engine != NULL) 
+            {
+                printf("RADIO batch process completed with success state\n");
+            }
+            else
+            {
+                fprintf(stderr, "RADIO batch process could not be recorded\n");
+                exit(1);
+            }
+            break;
+        case ANALY:
+            if((Analytics *)engine != NULL)
+            {
+                printf("RADIO to ANALYTIC batch process copy completed with success state\n");
+                printf("\n----------------- ANALYTIC REPORT -----------------\n");
+                for(int i = 0; i < size; i++)
+                {
+                    Analytics *eng = (Analytics *)engine;
+                    printf("PACKID[%d] = %d -> ", i, eng->dest[i].sensor_id);
+                    printf("STATUS[%d] = %d -> ", i, (eng->dest[i].status_flag & BIT(1)));
+                    printf("RAW_PY[%d] = %d\n", i, eng->dest[i].raw_payload);
+                }
+            }
+            else
+            {
+                fprintf(stderr, "RADIO batch process could not be recorded\n");
+                exit(1);
+            }
+            break;
+        default:
+            fprintf(stderr, "Unsupported Engine Type Provided\n");
+            exit(1);
     }
 }
 
@@ -243,8 +277,17 @@ int main(void)
     init((void **)&analytics, t2);
 
     // Batch Radio Process
-    uint8_t batch_res = add_radio_packet(radio, 1, 10, 2, 1, 7, 0);
-    verify_radio_batch(radio, batch_res);
+    uint8_t batch_res = add_radio_packet(radio, 0, 10, 2, 1, 7);
+    verify_batch(radio, batch_res, RADIO, radio->size);
+    
+    // Copy/Move the Radio waves packets to the Analytics Engine
+    batch_copy(radio, analytics);
+    verify_batch(analytics, batch_res, ANALY, radio->size);
 
+    // cleanup 
+    free(radio->src);
+    free(radio);
+    free(analytics->dest);
+    free(analytics);
     return 0;
 }
