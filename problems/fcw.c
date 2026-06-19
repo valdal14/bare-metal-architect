@@ -11,13 +11,19 @@
 #define FUEl_MASK 0x04 
 // Engine Controls Masks
 #define LEFT_ENGINE_MASK 0x02 
-#define RIGHT_ENGINE_MASK 0x4 
+#define RIGHT_ENGINE_MASK 0x04 
 // Airplane Authorization
 #define AUTHORIZATION_MASK 0x8F
 #define AUTH_GROUND 0x00
 #define AUTH_FUEL 0x02
 #define AUTH_L_ENG 0x04
 #define AUTH_R_ENG 0x80 
+
+typedef enum 
+{
+    LEFT,
+    RIGHT 
+} ControlSwitch;
 
 typedef struct
 {
@@ -87,15 +93,67 @@ void init(Airplane **airplane, char *id)
  */
 void refill(Airplane *airplane)
 {
-    if((airplane->flight_controls & SWITCH(FUEl_MASK)) == 0)
+    if((airplane->flight_controls & FUEl_MASK) == 0)
     {
-        printf("Re-filling Airplane's Tanks\n");
-        airplane->flight_controls |= SWITCH(FUEl_MASK);
-        airplane->authorized_to_flight |= SWITCH(AUTH_FUEL);
+        printf("EXEC: Re-filling Airplane's Tanks\n");
+        airplane->flight_controls |= FUEl_MASK;
+        airplane->authorized_to_flight |= AUTH_FUEL;
     }
     else
     {
         printf("The Airplane's Tanks are already filled\n");
+    }
+}
+
+/**
+ * @brief Toggles the Engine Control Switch 
+ * @param Airplane airplane pointer
+ * @param ControlSwitch cs 
+ * @return void
+ */
+void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs)
+{
+    if((airplane->engine_control & LEFT_ENGINE_MASK) != 0 && (airplane->engine_control & RIGHT_ENGINE_MASK) != 0)
+    {
+        printf("WARNING: Both Left and Right engines are already ON\n");
+        return;
+    }
+
+    switch(cs)
+    {
+        case LEFT:
+        {
+            if((airplane->engine_control & LEFT_ENGINE_MASK) == 0 && (airplane->engine_control & GROUND_MASK) == 0)
+            {
+                printf("EXEC: Toggle ON Left Control Engine Switch\n");
+                airplane->engine_control |= LEFT_ENGINE_MASK;
+                airplane->authorized_to_flight |= AUTH_L_ENG;
+            }
+            else
+            {
+                fprintf(stderr, "ALERT: An attempt to turn the LEFT engine ON failed. Departure aborted\n");
+                exit(1);
+            }
+            break;
+        }
+        case RIGHT:
+        {
+            if((airplane->engine_control & RIGHT_ENGINE_MASK) == 0 && (airplane->engine_control & GROUND_MASK) == 0)
+            {
+                printf("EXEC: Toggle ON Right Control Engine Switch\n");
+                airplane->engine_control |= RIGHT_ENGINE_MASK;
+                airplane->authorized_to_flight |= AUTH_R_ENG;
+            }
+            else 
+            {
+                fprintf(stderr, "ALERT: An attempt to turn the RIGHT engine ON failed. Departure aborted\n");
+                exit(1);
+            }
+            break;
+        }
+        default:
+            fprintf(stderr, "CODE: Invalid ControlSwitch, the Operation will be aborted\n");
+            exit(1);
     }
 }
 
@@ -104,5 +162,7 @@ int main(void)
     Airplane *plane = NULL;
     init(&plane, "WA-777");
     refill(plane);
+    toggle_engine_switch_on(plane, RIGHT);
+    toggle_engine_switch_on(plane, LEFT);
     return 0;
 }
