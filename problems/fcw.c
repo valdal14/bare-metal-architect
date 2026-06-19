@@ -25,19 +25,31 @@ typedef enum
     RIGHT 
 } ControlSwitch;
 
+typedef struct Command 
+{
+    struct Command *next; // 8 bytes
+    char *name; // 8 bytes 
+    uint8_t state; // 1 bite
+} Command; // 17 + 7 paddings = 24 bytes 
+
 typedef struct
 {
+    char *id; // 8 byte 
+    Command *bb_head; // 8 bytes
+    Command *bb_tail; // 8 bytes 
+    uint8_t recording; // 1 byte 
+    
     /**
      * bit 0 = onground
      * bit 2 = airborn
      * bit 4 = fuel status
      */
-    uint8_t flight_controls;
+    uint8_t flight_controls; // 1 byte 
     /**
      * bit 2 = engine left status
      * bit 4 = engine right status 
      */
-    uint8_t engine_control;
+    uint8_t engine_control; // 1 byet 
     /**
      * All of the following checks 
      * must be completed to get the 
@@ -48,9 +60,8 @@ typedef struct
      * bit 4 = engine left switch  
      * bit 8 = engine right switch
      * */
-    uint8_t authorized_to_flight;
-    char *id;
-} Airplane;
+    uint8_t authorized_to_flight; // 1 byte 
+} Airplane; // 28 bytes + 4 paddings = 32 bytes  
 
 /**
  * @brief Prepare the Airplane
@@ -82,7 +93,10 @@ void init(Airplane **airplane, char *id)
     plane->id[plane_id_size - 1] = '\0';
     plane->flight_controls = PLANE_DEFAULT_MASK;
     plane->engine_control = PLANE_DEFAULT_MASK;
-
+    plane->bb_head = NULL;
+    plane->bb_tail = NULL;
+    plane->recording = 0;
+    
     *airplane = plane;    
 }
 
