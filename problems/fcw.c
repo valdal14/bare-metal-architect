@@ -6,17 +6,25 @@
 #define PLANE_DEFAULT_MASK 0x00
 #define SWITCH(x) (1 << (x))
 // Airplane Controls Masks 
-#define GROUND 0x00 
-#define AIRBORN 0x01
-#define AUTHORIZATION_MASK 0x80
+#define GROUND_MASK 0x00 
+#define AIRBORN_MASK 0x02
+#define FUEl_MASK 0x04 
+// Engine Controls Masks
+#define LEFT_ENGINE_MASK 0x02 
+#define RIGHT_ENGINE_MASK 0x4 
+// Airplane Authorization
+#define AUTHORIZATION_MASK 0x8F
+#define AUTH_GROUND 0x00
+#define AUTH_FUEL 0x02
+#define AUTH_L_ENG 0x04
+#define AUTH_R_ENG 0x80 
 
 typedef struct
 {
     /**
      * bit 0 = onground
-     * bit 2 = aitborn
+     * bit 2 = airborn
      * bit 4 = fuel status
-     * bit 8 = authorized
      */
     uint8_t flight_controls;
     /**
@@ -24,20 +32,19 @@ typedef struct
      * bit 4 = engine right status 
      */
     uint8_t engine_control;
+    /**
+     * All of the following checks 
+     * must be completed to get the 
+     * control tower authorization
+     *
+     * bit 0 = onground
+     * bit 2 = fuel status
+     * bit 4 = engine left switch  
+     * bit 8 = engine right switch
+     * */
+    uint8_t authorized_to_flight;
     char *id;
 } Airplane;
-
-/**
- * @brief Toggle the Airplane's Switch 
- * @param Airplane airplane pointer
- * @param uint8_t control_mask
- * @param uint8_t switch_id
- * @return void
- */
-void toggle_switch(Airplane *airplane, uint8_t control_mask,  uint8_t switch_id)
-{
-    
-}
 
 /**
  * @brief Prepare the Airplane
@@ -73,11 +80,29 @@ void init(Airplane **airplane, char *id)
     *airplane = plane;    
 }
 
+/**
+ * @brief Refills the Airplane's tanks
+ * @param Airplane airplane pointer
+ * @return void
+ */
+void refill(Airplane *airplane)
+{
+    if((airplane->flight_controls & SWITCH(FUEl_MASK)) == 0)
+    {
+        printf("Re-filling Airplane's Tanks\n");
+        airplane->flight_controls |= SWITCH(FUEl_MASK);
+        airplane->authorized_to_flight |= SWITCH(AUTH_FUEL);
+    }
+    else
+    {
+        printf("The Airplane's Tanks are already filled\n");
+    }
+}
+
 int main(void)
 {
     Airplane *plane = NULL;
     init(&plane, "WA-777");
-    printf("Allocated at %p\n", plane);
-    printf("Identifier = %s\n", plane->id);
+    refill(plane);
     return 0;
 }
