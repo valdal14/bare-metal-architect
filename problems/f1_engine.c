@@ -59,14 +59,16 @@ float get_tire_temp(uint32_t raw_payload)
 /**
  * @brief Reads packets from the source and copies 
  * the packets into the analytics.
- * @param Radio radio pointer
- * @param const Analytics analytics pointer
+ * @param TelemetryPacket restrict dest pointer
+ * @param TelemetryPacket restrict src pointer
  * @return void
  */
-void batch_copy(Radio *radio, Analytics *analytics)
+void batch_copy(TelemetryPacket * restrict dest, const TelemetryPacket * restrict src, size_t count)
 {
-    for (size_t i = 0; i < radio->size; i++) 
-        memmove((TelemetryPacket *)&analytics->dest[i], (TelemetryPacket *)&radio->src[i], sizeof(TelemetryPacket)); 
+    // The compiler will vectorize this automatically because of 'restrict'
+    for (size_t i = 0; i < count; i++) {
+        dest[i] = src[i];
+    }
 }
 
 /**
@@ -191,7 +193,8 @@ uint8_t add_radio_packet(Radio *radio, uint16_t id, double ts, float raw_data, u
     
     radio->src[id].sensor_id = id;
     radio->src[id].timestamp = ts + id; 
-    radio->src[id].raw_payload = get_tire_temp(raw_data + id); 
+    float current_temp = raw_data + id;
+    memcpy(&radio->src[id].raw_payload, &current_temp, sizeof(float));
     radio->src[id].checksum = cs + id;
     radio->src[id].status_flag = DEFAULT_FLAG_MASK;
     radio->size += 1;
@@ -250,7 +253,8 @@ void verify_batch(void *engine, uint8_t result, F1Type type, uint8_t size)
                     Analytics *eng = (Analytics *)engine;
                     printf("PACKID[%d] = %d -> ", i, eng->dest[i].sensor_id);
                     printf("STATUS[%d] = %d -> ", i, (eng->dest[i].status_flag & BIT(1)));
-                    printf("RAW_PY[%d] = %d\n", i, eng->dest[i].raw_payload);
+                    float decoded_temp = get_tire_temp(eng->dest[i].raw_payload);
+                    printf("RAW_PY[%d] = %.1f\n", i, decoded_temp);
                 }
             }
             else
@@ -281,7 +285,7 @@ int main(void)
     verify_batch(radio, batch_res, RADIO, radio->size);
     
     // Copy/Move the Radio waves packets to the Analytics Engine
-    batch_copy(radio, analytics);
+    batch_copy(analytics->dest, radio->src, radio->size);
     verify_batch(analytics, batch_res, ANALY, radio->size);
 
     // cleanup 
