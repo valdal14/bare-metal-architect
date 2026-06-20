@@ -9,8 +9,10 @@
 #define GROUND_MASK 0x01 
 #define AIRBORN_MASK 0x02
 #define FUEl_MASK 0x04
+#define LANDING_GEAR_MASK 0x80 
 #define GROUND_BIT 0
 #define AIRBORNE_BIT 1
+#define LANDING_GEAR_BIT 7 
 // Engine Controls Masks
 #define LEFT_ENGINE_MASK 0x02 
 #define RIGHT_ENGINE_MASK 0x04 
@@ -60,6 +62,7 @@ typedef struct
      * bit 0 = onground
      * bit 2 = airborn
      * bit 4 = fuel status
+     * bit 8 = landing gear
      */
     uint8_t flight_controls; // 1 byte 
     /**
@@ -302,7 +305,7 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs, void(*rec)(Ai
  * @param Airplane airplane pointer
  * @return void
  */
-void request_checklist_auth(Airplane *airplane)
+void request_departure_auth(Airplane *airplane)
 {
     uint8_t approval_steps = 0;
     uint8_t checklist_status = airplane->authorized_to_flight;
@@ -350,7 +353,7 @@ void show_flight_recordings(Airplane *airplane)
  */
 void execute_departure(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
 {
-    request_checklist_auth(airplane); 
+    request_departure_auth(airplane); 
     printf("Flight %s is leaving the runaway\n", airplane->id);
     // Toggle the GROUND switch OFF 
     airplane->flight_controls &= ~SWITCH(GROUND_BIT);
@@ -366,11 +369,14 @@ void execute_departure(Airplane *airplane, void(*rec)(Airplane *airplane, char *
         exit(1);
     }
     
+    // Gear up 
+    airplane->flight_controls |= LANDING_GEAR_MASK;
+    CMDState lg_state = OFF;
+    rec(airplane, "LAND-GEAR", lg_state);
     // Set the Airplane to AIRBORN state
     airplane->flight_controls |= SWITCH(AIRBORNE_BIT);
     CMDState state = ON;
     rec(airplane, "IS-ONAIR", state);
-    printf("Flight %s is successfully AIRBORN\n", airplane->id);
 }
 
 /**
@@ -484,6 +490,83 @@ void toggle_engine_switch_off(Airplane *airplane, ControlSwitch cs, void(*rec)(A
     }
 }
 
+/**
+ * @brief Requests Control Tower for landing
+ * @param Airplane airplane pointer
+ * @return uint8_t
+ */
+uint8_t request_landing_auth(Airplane *airplane)
+{
+    if(((airplane->flight_controls & LANDING_GEAR_MASK) != 0) && (airplane->flight_controls & AIRBORN_MASK) != 0)
+    {
+        printf("Flight %s is authorized for landing\n", airplane->id);
+        return 1;
+    }
+    else
+    {
+        fprintf(stderr, "ALERT: Execute Landing Configuration DENIED. Airplane Configuration NOT VALID. Contact the Control Tower\n");
+        return 0;
+    }
+}
+
+
+/**
+ * @brief Executes the landing configuration and lands the airplane
+ * @param Airplane airplane pointer
+ * @param void rec pointer callback
+ * @return void
+ */
+void execute_landing(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
+{
+    printf("EXEC: Configure Airplane for landing\n");
+    
+    if(request_landing_auth(airplane) == 1)
+    {
+        airplane->flight_controls &= ~SWITCH(LANDING_GEAR_BIT);
+        airplane->flight_controls |= LANDING_GEAR_MASK;
+        
+        if((airplane->flight_controls & LANDING_GEAR_MASK) == 0) 
+        {
+            fprintf(stderr, "ALERT: Problem retreating LANDING GEAR. Go Around Required");
+            exit(1);
+        }
+
+        CMDState state = ON;
+        rec(airplane, "LAND-GEAR", state);
+        
+        // Automatically toggle off the AIRBORN state  
+        airplane->flight_controls &= ~SWITCH(AIRBORNE_BIT);
+        
+        if((airplane->flight_controls & AIRBORN_MASK) != 0)
+        {
+            fprintf(stderr, "ALERT: Wrong Airplane STATE. Expected AIRBORN to be OFF\n");
+            exit(1);
+        }
+
+        printf("Fligh %s successfully landed\n", airplane->id);
+        CMDState landed_state = ON;
+        rec(airplane, "LANDED", landed_state);
+      
+        // Automatically toggle ON GROUND state 
+        airplane->flight_controls |= SWITCH(GROUND_BIT);
+
+        if((airplane->flight_controls & GROUND_MASK) == 0)
+        {
+            fprintf(stderr, "ALERT: Wrong Airplane STATE. Expected GROUND to be ON\n");
+            exit(1);
+        }
+
+        CMDState ground_state = ON;
+        rec(airplane, "IS-GROUD", ground_state);
+    }
+    else
+    {
+        fprintf(stderr, "Authorization DENIED, please go around and perform the landing checklist again\n");
+        exit(1);
+    }
+}
+
+
 int main(void)
 {
     Airplane *plane = NULL;
@@ -493,9 +576,10 @@ int main(void)
     toggle_engine_switch_on(plane, LEFT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
     execute_departure(plane, record_command);
-
+    // Possible Emergency 
     toggle_engine_switch_off(plane, LEFT, record_command);
     
+    execute_landing(plane, record_command); 
     show_flight_recordings(plane);
     return 0;
 }
