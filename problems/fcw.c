@@ -182,16 +182,16 @@ char *cmd_state_to_str(CMDState cmd_state)
     switch(cmd_state)
     {
         case ON:
-            str = "ON";
+            strncpy(str, "ON", MAX_CMD_SIZE);
             break;
         case OFF:
-            str = "OFF";
+            strncpy(str, "OFF", MAX_CMD_SIZE);
             break;
         case IGNORED:
-            str = "IGNORED";
+            strncpy(str, "IGNORED", MAX_CMD_SIZE);
             break;
         case MAYDAY:
-            str = "MAYDAY";
+            strncpy(str, "MAYDAY", MAX_CMD_SIZE);
             break;
         default:
             fprintf(stderr, "ALERT: Invalid CMDState found, departure aborted\n");
@@ -199,7 +199,7 @@ char *cmd_state_to_str(CMDState cmd_state)
     }
 
     size_t cmd_size = strlen(str);
-    str[cmd_size - 1] = '\n';
+    str[cmd_size + 1] = '\n';
 
     return str;
 }
@@ -424,14 +424,14 @@ void turn_eng_off(Airplane *airplane, ControlSwitch cs, void(*rec)(Airplane *air
     {
         case LEFT:
             airplane->engine_control &= ~SWITCH(LEFT_ENGINE_BIT);
-            CMDState left_eng_off = ON;
-            rec(airplane, "L-ENG-OFF", left_eng_off);
+            CMDState left_eng_off = OFF;
+            rec(airplane, "LEFT-ENG", left_eng_off);
             printf("Flight %s. LEFT engine is now OFF\n", airplane->id);
             break;
         case RIGHT:
             airplane->engine_control &= ~SWITCH(RIGHT_ENGINE_BIT);
-            CMDState right_eng_off = ON;
-            rec(airplane, "R-ENG-OFF", right_eng_off);
+            CMDState right_eng_off = OFF;
+            rec(airplane, "RIGHT_ENG", right_eng_off);
             printf("Flight %s. RIGHT engine is now OFF\n", airplane->id);
             break;
         default:
@@ -522,7 +522,6 @@ void execute_landing(Airplane *airplane, void(*rec)(Airplane *airplane, char *cm
     
     if(request_landing_auth(airplane) == 1)
     {
-        airplane->flight_controls &= ~SWITCH(LANDING_GEAR_BIT);
         airplane->flight_controls |= LANDING_GEAR_MASK;
         
         if((airplane->flight_controls & LANDING_GEAR_MASK) == 0) 
@@ -580,12 +579,11 @@ void reset_config(Airplane *airplane)
     {
         next_cmd = cmd->next;
         free(cmd->name);
+        free(cmd);
         cmd = next_cmd;
     }
 
     free(airplane->id);
-    free(airplane->bb_head);
-    free(airplane->bb_tail);
     free(airplane);
     airplane = NULL;
 }
