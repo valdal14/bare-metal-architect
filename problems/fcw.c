@@ -187,6 +187,7 @@ char *cmd_state_to_str(CMDState cmd_state)
 /**
  * @brief Refills the Airplane's tanks
  * @param Airplane airplane pointer
+ * @param void rec pointer callback
  * @return void
  */
 void refill(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
@@ -211,13 +212,16 @@ void refill(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDSta
  * @brief Toggles the Engine Control Switch 
  * @param Airplane airplane pointer
  * @param ControlSwitch cs 
+ * @param void rec pointer callback
  * @return void
  */
-void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs)
+void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
 {
     if((airplane->engine_control & LEFT_ENGINE_MASK) != 0 && (airplane->engine_control & RIGHT_ENGINE_MASK) != 0)
     {
         printf("WARNING: Both Left and Right engines are already ON\n");
+        CMDState state = IGNORED;
+        rec(airplane, "ENGINE-ON", state);
         return;
     }
 
@@ -230,10 +234,14 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs)
                 printf("EXEC: Toggle ON Left Control Engine Switch\n");
                 airplane->engine_control |= LEFT_ENGINE_MASK;
                 airplane->authorized_to_flight |= AUTH_L_ENG;
+                CMDState state = ON;
+                rec(airplane, "LEFT-ENG", state);
             }
             else
             {
                 fprintf(stderr, "ALERT: An attempt to turn the LEFT engine ON failed. Departure aborted\n");
+                CMDState state = IGNORED;
+                rec(airplane, "LEFT-ENG", state);
                 exit(1);
             }
             break;
@@ -245,16 +253,22 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs)
                 printf("EXEC: Toggle ON Right Control Engine Switch\n");
                 airplane->engine_control |= RIGHT_ENGINE_MASK;
                 airplane->authorized_to_flight |= AUTH_R_ENG;
+                CMDState state = ON;
+                rec(airplane, "RIGHT-ENG", state);
             }
             else 
             {
                 fprintf(stderr, "ALERT: An attempt to turn the RIGHT engine ON failed. Departure aborted\n");
+                CMDState state = IGNORED;
+                rec(airplane, "RIGHT-ENG", state);
                 exit(1);
             }
             break;
         }
         default:
             fprintf(stderr, "CODE: Invalid ControlSwitch, the Operation will be aborted\n");
+            CMDState state = IGNORED;
+            rec(airplane, "ENGINE-ON", state);
             exit(1);
     }
 }
@@ -264,8 +278,8 @@ int main(void)
     Airplane *plane = NULL;
     init(&plane, "WA-777");
     refill(plane, record_command);
-    toggle_engine_switch_on(plane, RIGHT);
-    toggle_engine_switch_on(plane, LEFT);
+    toggle_engine_switch_on(plane, RIGHT, record_command);
+    toggle_engine_switch_on(plane, LEFT, record_command);
     
     return 0;
 }
