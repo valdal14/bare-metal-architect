@@ -18,6 +18,15 @@
 #define AUTH_FUEL 0x02
 #define AUTH_L_ENG 0x04
 #define AUTH_R_ENG 0x80 
+// Command Macros
+#define MAX_CMD_SIZE 10
+
+typedef enum 
+{
+    ON,
+    OFF,
+    IGNORED
+} CMDState;
 
 typedef enum 
 {
@@ -101,21 +110,68 @@ void init(Airplane **airplane, char *id)
 }
 
 /**
+ * @brief Records an executed command in the BlackBox
+ * @param Airplane airplane pointer 
+ * @param chat cmd pointer
+ * @param CMDState cmd_state
+ * @return void
+ */
+void record_command(Airplane *airplane, char *cmd, CMDState cmd_state)
+{
+    Command *command = (Command *)malloc(sizeof(Command));
+    
+    if(command == NULL)
+    {
+        fprintf(stderr, "WARNING: '%s' command could not be recorded\n", cmd);
+        return;
+    }
+    
+    uint8_t cmd_size = strlen(cmd) + 1;
+    command->name = (char *)malloc(sizeof(char) * cmd_size);
+    
+    if(command == NULL || cmd_size > MAX_CMD_SIZE)
+    {
+        fprintf(stderr, "WARNING: '%s' command instruction could not be recorded\n", cmd);
+        return;
+    }
+
+    strncpy(command->name, cmd, cmd_size);
+    command->name[cmd_size - 1] = '\0';
+    command->state = cmd_state;
+    command->next = NULL;
+
+    if(airplane->bb_head == NULL)
+    {
+        airplane->bb_head = command;
+        airplane->bb_tail = command;
+        airplane->bb_head->next = airplane->bb_tail;
+    }
+    else
+    {
+        airplane->bb_tail->next = command;
+    }
+}
+
+/**
  * @brief Refills the Airplane's tanks
  * @param Airplane airplane pointer
  * @return void
  */
-void refill(Airplane *airplane)
+void refill(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
 {
     if((airplane->flight_controls & FUEl_MASK) == 0)
     {
         printf("EXEC: Re-filling Airplane's Tanks\n");
         airplane->flight_controls |= FUEl_MASK;
         airplane->authorized_to_flight |= AUTH_FUEL;
+        CMDState state = ON;
+        rec(airplane, "REFILL", state); 
     }
     else
     {
         printf("The Airplane's Tanks are already filled\n");
+        CMDState state = IGNORED;
+        rec(airplane, "REFILL", state);
     }
 }
 
@@ -175,8 +231,13 @@ int main(void)
 {
     Airplane *plane = NULL;
     init(&plane, "WA-777");
-    refill(plane);
+    refill(plane, record_command);
+    refill(plane, record_command);
     toggle_engine_switch_on(plane, RIGHT);
     toggle_engine_switch_on(plane, LEFT);
+    printf("%s\n", plane->bb_head->name);
+    printf("%s\n", plane->bb_head->next->name);
+    printf("%s\n", plane->bb_tail->name);
+    printf("%s\n", plane->bb_tail->next->name);
     return 0;
 }
