@@ -126,7 +126,7 @@ void record_command(Airplane *airplane, char *cmd, CMDState cmd_state)
         return;
     }
     
-    uint8_t cmd_size = strlen(cmd) + 1;
+    size_t cmd_size = strlen(cmd) + 1;
     command->name = (char *)malloc(sizeof(char) * cmd_size);
     
     if(command == NULL || cmd_size > MAX_CMD_SIZE)
@@ -150,6 +150,38 @@ void record_command(Airplane *airplane, char *cmd, CMDState cmd_state)
     {
         airplane->bb_tail->next = command;
     }
+}
+
+/**
+ * @brief Maps the CMDState state value to its string representation
+ * @param CMDState cmd_state
+ * @return char pointer
+ */
+char *cmd_state_to_str(CMDState cmd_state)
+{
+    char *str = (char *)malloc(sizeof(char) * MAX_CMD_SIZE);
+
+    switch(cmd_state)
+    {
+        case ON:
+            str = "ON";
+            break;
+        case OFF:
+            str = "OFF";
+            break;
+        case IGNORED:
+            str = "IGNORED";
+            break;
+        default:
+            fprintf(stderr, "ALERT: Invalid CMDState found, departure aborted\n");
+            exit(1);
+    }
+
+    size_t cmd_size = strlen(str);
+    printf("size = %d\n", cmd_size);
+    str[cmd_size - 1] = '\n';
+
+    return str;
 }
 
 /**
@@ -232,12 +264,8 @@ int main(void)
     Airplane *plane = NULL;
     init(&plane, "WA-777");
     refill(plane, record_command);
-    refill(plane, record_command);
     toggle_engine_switch_on(plane, RIGHT);
     toggle_engine_switch_on(plane, LEFT);
-    printf("%s\n", plane->bb_head->name);
-    printf("%s\n", plane->bb_head->next->name);
-    printf("%s\n", plane->bb_tail->name);
-    printf("%s\n", plane->bb_tail->next->name);
+    
     return 0;
 }
