@@ -10,10 +10,12 @@
 #define AIRBORN_MASK 0x02
 #define FUEl_MASK 0x04
 #define GROUND_BIT 0
-#define AIRBORNE_BIT 2
+#define AIRBORNE_BIT 1
 // Engine Controls Masks
 #define LEFT_ENGINE_MASK 0x02 
 #define RIGHT_ENGINE_MASK 0x04 
+#define LEFT_ENGINE_BIT 1 
+#define RIGHT_ENGINE_BIT 3
 // Airplane Authorization
 #define AUTH_GROUND 0x01
 #define AUTH_FUEL 0x02
@@ -22,12 +24,16 @@
 #define AUTH_APPROVAL_CODE 4
 // Command Macros
 #define MAX_CMD_SIZE 10
+// Pilots Macros
+#define P1 "P-01"
+#define P2 "P-02"
 
 typedef enum 
 {
     ON,
     OFF,
-    IGNORED
+    IGNORED,
+    MAYDAY
 } CMDState;
 
 typedef enum 
@@ -181,6 +187,9 @@ char *cmd_state_to_str(CMDState cmd_state)
         case IGNORED:
             str = "IGNORED";
             break;
+        case MAYDAY:
+            str = "MAYDAY";
+            break;
         default:
             fprintf(stderr, "ALERT: Invalid CMDState found, departure aborted\n");
             exit(1);
@@ -223,7 +232,7 @@ void refill(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDSta
 }
 
 /**
- * @brief Toggles the Engine Control Switch 
+ * @brief Toggles the Engine Control Switch ON  
  * @param Airplane airplane pointer
  * @param ControlSwitch cs 
  * @param void rec pointer callback
@@ -364,6 +373,117 @@ void execute_departure(Airplane *airplane, void(*rec)(Airplane *airplane, char *
     printf("Flight %s is successfully AIRBORN\n", airplane->id);
 }
 
+/**
+ * @brief Allows the pilots to declare and emergency
+ * @param Airplane airplane pointer
+ * @param char pilot_id pointer
+ * @return uint8_t
+ */
+uint8_t declare_emergency(Airplane *airplane, char *pilot_id)
+{
+    char buffer[256];
+    printf("Flight %s EMERGENCY declaration process\n", airplane->id);
+    printf("%s please confirm emergency and engine off authorization\n", pilot_id);
+
+    while(1) 
+    {
+        printf("CT> ");
+
+        if(fgets(buffer, sizeof(buffer), stdin) != NULL)
+        {
+            buffer[strcspn(buffer, "\n")] = '\0';
+            
+            if(strcmp(buffer, "YES") == 0 || strcmp(buffer, "yes") == 0)
+            {
+                return 1;
+            }
+            else
+            {
+                return 0;
+            }
+        }
+    }
+}
+
+/**
+ * @brief Switch Off the Airplane's Engine
+ * @param Airplane airplane pointer
+ * @param ControlSwitch cs
+ * @param void rec pointer callback
+ * @return void
+ */
+void turn_eng_off(Airplane *airplane, ControlSwitch cs, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
+{
+    switch(cs)
+    {
+        case LEFT:
+            airplane->engine_control &= ~SWITCH(LEFT_ENGINE_BIT);
+            CMDState left_eng_off = ON;
+            rec(airplane, "L-ENG-OFF", left_eng_off);
+            printf("Flight %s. LEFT engine is now OFF\n", airplane->id);
+            break;
+        case RIGHT:
+            airplane->engine_control &= ~SWITCH(RIGHT_ENGINE_BIT);
+            CMDState right_eng_off = ON;
+            rec(airplane, "R-ENG-OFF", right_eng_off);
+            printf("Flight %s. RIGHT engine is now OFF\n", airplane->id);
+            break;
+        default:
+            fprintf(stderr, "CODE: Invalid ControlSwitch, the Operation will be aborted\n");
+            CMDState state = IGNORED;
+            rec(airplane, "ENG-OFF", state);
+            exit(1);
+    }
+}
+
+/**
+ * @brief Toggles the Engine Control Switch OFF
+ * @param Airplane airplane pointer
+ * @param ControlSwitch cs 
+ * @param void rec pointer callback
+ * @return void
+ */
+void toggle_engine_switch_off(Airplane *airplane, ControlSwitch cs, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
+{
+    if((airplane->flight_controls & AIRBORN_MASK) != 0)
+    {
+        fprintf(stderr, "Flight %s is AIRBORN, an attempt to turn an ENGINE OFF could be catastrophic.\n", airplane->id);
+        CMDState state = IGNORED;
+        rec(airplane, "ABENG-OFF", state);
+        fprintf(stderr, "Flight %s, if this is an emergency request please ask Control Tower Approval\n", airplane->id);
+        uint8_t p1_code = declare_emergency(airplane, P1);
+        uint8_t p2_code = declare_emergency(airplane, P2);
+
+        if(p1_code == 1 && p2_code == 1)
+        {
+            fprintf(stderr, "EMERGENCY Confirmed. You are authorized to switch the engine OFF\n");
+            CMDState emergency = ON;
+            rec(airplane, "EMERGENCY", emergency);
+            turn_eng_off(airplane, cs, rec);
+        }
+        else
+        {
+            fprintf(stderr, "The EMERGENCY is not confirmed, the Operation will be aborted\n");
+            CMDState emergency = IGNORED;
+            rec(airplane, "EMERGENCY", emergency);
+            return;
+        }
+    }
+
+    if(((airplane->flight_controls & GROUND_MASK) != 0) && ((airplane->flight_controls & AIRBORN_MASK) == 0))
+    {   
+        if((airplane->engine_control & LEFT_ENGINE_MASK) == 0 && (airplane->engine_control & RIGHT_ENGINE_MASK) == 0)
+        {
+            printf("WARNING: Both Left and Right engines are already OFF\n");
+            CMDState state = IGNORED;
+            rec(airplane, "ENG-OFF", state);
+            return;
+        }
+
+        turn_eng_off(airplane, cs, rec);
+    }
+}
+
 int main(void)
 {
     Airplane *plane = NULL;
@@ -373,6 +493,8 @@ int main(void)
     toggle_engine_switch_on(plane, LEFT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
     execute_departure(plane, record_command);
+
+    toggle_engine_switch_off(plane, LEFT, record_command);
     
     show_flight_recordings(plane);
     return 0;
