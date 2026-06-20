@@ -6,14 +6,16 @@
 #define PLANE_DEFAULT_MASK 0x00
 #define SWITCH(x) (1 << (x))
 // Airplane Controls Masks 
-#define GROUND_MASK 0x00 
+#define GROUND_MASK 0x01 
 #define AIRBORN_MASK 0x02
-#define FUEl_MASK 0x04 
+#define FUEl_MASK 0x04
+#define GROUND_BIT 0
+#define AIRBORNE_BIT 2
 // Engine Controls Masks
 #define LEFT_ENGINE_MASK 0x02 
 #define RIGHT_ENGINE_MASK 0x04 
 // Airplane Authorization
-#define AUTH_GROUND 0x00
+#define AUTH_GROUND 0x01
 #define AUTH_FUEL 0x02
 #define AUTH_L_ENG 0x04
 #define AUTH_R_ENG 0x80 
@@ -73,43 +75,6 @@ typedef struct
 } Airplane; // 28 bytes + 4 paddings = 32 bytes  
 
 /**
- * @brief Prepare the Airplane
- * @param Airplane double pointer
- * @return void
- */
-void init(Airplane **airplane, char *id)
-{
-    Airplane *plane = (Airplane *)calloc(1, sizeof(Airplane));
-    
-    if(plane == NULL)
-    {
-        fprintf(stderr, "CODE: Abort Operation\n");
-        fprintf(stderr, "Airplane '%s' is cannot be configured for departure\n", id);
-        exit(1);
-    }
-
-    size_t plane_id_size = strlen(id) + 1;
-    plane->id = (char *)malloc(sizeof(char) * plane_id_size);
-    
-    if(plane->id == NULL)
-    {
-        fprintf(stderr, "CODE: Abort Operation\n");
-        fprintf(stderr, "Airplane without an identifier cannot be configured for departure\n");
-        exit(1);
-    }
-
-    strncpy(plane->id, id, plane_id_size);
-    plane->id[plane_id_size - 1] = '\0';
-    plane->flight_controls = PLANE_DEFAULT_MASK;
-    plane->engine_control = PLANE_DEFAULT_MASK;
-    plane->bb_head = NULL;
-    plane->bb_tail = NULL;
-    plane->recording = 0;
-    
-    *airplane = plane;    
-}
-
-/**
  * @brief Records an executed command in the BlackBox
  * @param Airplane airplane pointer 
  * @param chat cmd pointer
@@ -153,6 +118,50 @@ void record_command(Airplane *airplane, char *cmd, CMDState cmd_state)
 }
 
 /**
+ * @brief Prepare the Airplane
+ * @param Airplane double pointer
+ * @param void rec pointer callback
+ * @return void
+ */
+void init(Airplane **airplane, char *id, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
+{
+    Airplane *plane = (Airplane *)calloc(1, sizeof(Airplane));
+    
+    if(plane == NULL)
+    {
+        fprintf(stderr, "CODE: Abort Operation\n");
+        fprintf(stderr, "Airplane '%s' is cannot be configured for departure\n", id);
+        exit(1);
+    }
+
+    size_t plane_id_size = strlen(id) + 1;
+    plane->id = (char *)malloc(sizeof(char) * plane_id_size);
+    
+    if(plane->id == NULL)
+    {
+        fprintf(stderr, "CODE: Abort Operation\n");
+        fprintf(stderr, "Airplane without an identifier cannot be configured for departure\n");
+        exit(1);
+    }
+
+    strncpy(plane->id, id, plane_id_size);
+    plane->id[plane_id_size - 1] = '\0';
+    plane->flight_controls = PLANE_DEFAULT_MASK;
+    plane->engine_control = PLANE_DEFAULT_MASK;
+    plane->bb_head = NULL;
+    plane->bb_tail = NULL;
+    plane->recording = 0;
+    // activate the state GROUND 
+    plane->flight_controls |= GROUND_MASK;
+    CMDState state = ON;
+    rec(plane, "IS-GROUND", state);
+    // Authorization GROUD granted
+    plane->authorized_to_flight |= AUTH_GROUND;
+
+    *airplane = plane;
+}
+
+/**
  * @brief Maps the CMDState state value to its string representation
  * @param CMDState cmd_state
  * @return char pointer
@@ -191,7 +200,13 @@ char *cmd_state_to_str(CMDState cmd_state)
  */
 void refill(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
 {
-    if((airplane->flight_controls & FUEl_MASK) == 0)
+    if((airplane->flight_controls & GROUND_MASK) == 0)
+    {
+        fprintf(stderr, "Flight %s GROUND control state is NOT valid. Operation aborted\n", airplane->id);
+        exit(1);
+    }
+
+    if((airplane->flight_controls & FUEl_MASK) == 0 && (airplane->flight_controls & GROUND_MASK) != 0)
     {
         printf("EXEC: Re-filling Airplane's Tanks\n");
         airplane->flight_controls |= FUEl_MASK;
@@ -228,7 +243,7 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs, void(*rec)(Ai
     {
         case LEFT:
         {
-            if((airplane->engine_control & LEFT_ENGINE_MASK) == 0 && (airplane->engine_control & GROUND_MASK) == 0)
+            if((airplane->engine_control & LEFT_ENGINE_MASK) == 0 && (airplane->flight_controls & GROUND_MASK) != 0)
             {
                 printf("EXEC: Toggle ON Left Control Engine Switch\n");
                 airplane->engine_control |= LEFT_ENGINE_MASK;
@@ -247,7 +262,7 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs, void(*rec)(Ai
         }
         case RIGHT:
         {
-            if((airplane->engine_control & RIGHT_ENGINE_MASK) == 0 && (airplane->engine_control & GROUND_MASK) == 0)
+            if((airplane->engine_control & RIGHT_ENGINE_MASK) == 0 && (airplane->flight_controls & GROUND_MASK) != 0)
             {
                 printf("EXEC: Toggle ON Right Control Engine Switch\n");
                 airplane->engine_control |= RIGHT_ENGINE_MASK;
@@ -282,7 +297,7 @@ void request_checklist_auth(Airplane *airplane)
 {
     uint8_t approval_steps = 0;
     uint8_t checklist_status = airplane->authorized_to_flight;
-    if((checklist_status & AUTH_GROUND) == 0) approval_steps += 1;
+    if((checklist_status & AUTH_GROUND) != 0) approval_steps += 1;
     if((checklist_status & AUTH_FUEL) != 0) approval_steps += 1;
     if((checklist_status & AUTH_L_ENG) != 0) approval_steps += 1;
     if((checklist_status & AUTH_R_ENG) != 0) approval_steps += 1;
@@ -293,6 +308,7 @@ void request_checklist_auth(Airplane *airplane)
     }
     else
     {
+        printf("STATUS = %d\n", approval_steps);
         fprintf(stderr, "Flight %s authorization DENIED\n", airplane->id);
         exit(1);
     }
@@ -317,15 +333,47 @@ void show_flight_recordings(Airplane *airplane)
     }
 }
 
+/**
+ * @brief Executes the departure
+ * @param Airplane airplane pointer
+ * @param void rec pointer callback
+ * @return void
+ */
+void execute_departure(Airplane *airplane, void(*rec)(Airplane *airplane, char *cmd, CMDState cmd_state))
+{
+    request_checklist_auth(airplane); 
+    printf("Flight %s is leaving the runaway\n", airplane->id);
+    // Toggle the GROUND switch OFF 
+    airplane->flight_controls &= ~SWITCH(GROUND_BIT);
+    
+    if((airplane->flight_controls & GROUND_MASK) == 0)
+    {
+        CMDState state = OFF;
+        rec(airplane, "IS-GROUND", state);
+    }
+    else
+    {
+        fprintf(stderr, "ALERT: GROUND Switch failed, departure aborted\n");
+        exit(1);
+    }
+    
+    // Set the Airplane to AIRBORN state
+    airplane->flight_controls |= SWITCH(AIRBORNE_BIT);
+    CMDState state = ON;
+    rec(airplane, "IS-ONAIR", state);
+    printf("Flight %s is successfully AIRBORN\n", airplane->id);
+}
+
 int main(void)
 {
     Airplane *plane = NULL;
-    init(&plane, "WA-777");
+    init(&plane, "WA-777", record_command);
     refill(plane, record_command);
     toggle_engine_switch_on(plane, RIGHT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
+    execute_departure(plane, record_command);
+    
     show_flight_recordings(plane);
-    request_checklist_auth(plane);
     return 0;
 }
