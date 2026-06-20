@@ -566,20 +566,60 @@ void execute_landing(Airplane *airplane, void(*rec)(Airplane *airplane, char *cm
     }
 }
 
+/**
+ * @brief Resetting Flight Configuration
+ * @param Airplane airplane
+ * @return void
+ */
+void reset_config(Airplane *airplane)
+{
+    Command *cmd = airplane->bb_head;
+    Command *next_cmd = NULL;
+
+    while(cmd != NULL)
+    {
+        next_cmd = cmd->next;
+        free(cmd->name);
+        cmd = next_cmd;
+    }
+
+    free(airplane->id);
+    free(airplane->bb_head);
+    free(airplane->bb_tail);
+    free(airplane);
+    airplane = NULL;
+}
+
 
 int main(void)
 {
     Airplane *plane = NULL;
     init(&plane, "WA-777", record_command);
+    // Refill Tanks 
     refill(plane, record_command);
+
+    // Turns Engines ON 
     toggle_engine_switch_on(plane, RIGHT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
+    
+    // Departure
     execute_departure(plane, record_command);
+    
     // Possible Emergency 
     toggle_engine_switch_off(plane, LEFT, record_command);
     
+    // Landing 
     execute_landing(plane, record_command); 
+    
+    // Turn Engines off 
+    toggle_engine_switch_off(plane, LEFT, record_command);
+    toggle_engine_switch_off(plane, LEFT, record_command);
+    
+    // Show Flight Recording
     show_flight_recordings(plane);
+
+    // Reset Flight Configuration for next Departure
+    reset_config(plane);
     return 0;
 }
