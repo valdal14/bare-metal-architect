@@ -13,11 +13,11 @@
 #define LEFT_ENGINE_MASK 0x02 
 #define RIGHT_ENGINE_MASK 0x04 
 // Airplane Authorization
-#define AUTHORIZATION_MASK 0x8F
 #define AUTH_GROUND 0x00
 #define AUTH_FUEL 0x02
 #define AUTH_L_ENG 0x04
 #define AUTH_R_ENG 0x80 
+#define AUTH_APPROVAL_CODE 4
 // Command Macros
 #define MAX_CMD_SIZE 10
 
@@ -273,6 +273,32 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs, void(*rec)(Ai
 }
 
 /**
+ * @brief Request the authorization to flight after
+ * completion of the departure checklist 
+ * @param Airplane airplane pointer
+ * @return void
+ */
+void request_checklist_auth(Airplane *airplane)
+{
+    uint8_t approval_steps = 0;
+    uint8_t checklist_status = airplane->authorized_to_flight;
+    if((checklist_status & AUTH_GROUND) == 0) approval_steps += 1;
+    if((checklist_status & AUTH_FUEL) != 0) approval_steps += 1;
+    if((checklist_status & AUTH_L_ENG) != 0) approval_steps += 1;
+    if((checklist_status & AUTH_R_ENG) != 0) approval_steps += 1;
+    
+    if(approval_steps == AUTH_APPROVAL_CODE)
+    {
+        printf("Flight %s is authorized for departure\n", airplane->id);
+    }
+    else
+    {
+        fprintf(stderr, "Flight %s authorization DENIED\n", airplane->id);
+        exit(1);
+    }
+}
+
+/**
  * @brief Show the Fligh Recording Data 
  * @param Airplane airplane pointer
  * @return void
@@ -299,6 +325,7 @@ int main(void)
     toggle_engine_switch_on(plane, RIGHT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
-    show_flight_recordings(plane); 
+    show_flight_recordings(plane);
+    request_checklist_auth(plane);
     return 0;
 }
