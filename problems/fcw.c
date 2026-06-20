@@ -144,11 +144,11 @@ void record_command(Airplane *airplane, char *cmd, CMDState cmd_state)
     {
         airplane->bb_head = command;
         airplane->bb_tail = command;
-        airplane->bb_head->next = airplane->bb_tail;
     }
     else
     {
         airplane->bb_tail->next = command;
+        airplane->bb_tail = command;
     }
 }
 
@@ -178,7 +178,6 @@ char *cmd_state_to_str(CMDState cmd_state)
     }
 
     size_t cmd_size = strlen(str);
-    printf("size = %d\n", cmd_size);
     str[cmd_size - 1] = '\n';
 
     return str;
@@ -273,6 +272,25 @@ void toggle_engine_switch_on(Airplane *airplane, ControlSwitch cs, void(*rec)(Ai
     }
 }
 
+/**
+ * @brief Show the Fligh Recording Data 
+ * @param Airplane airplane pointer
+ * @return void
+ */
+void show_flight_recordings(Airplane *airplane)
+{
+    Command *head = airplane->bb_head;
+    printf("\n------ FLIGHT RECORDING DATA ------\n");
+
+    while(head != NULL)
+    {
+        printf("COMMAND  : %s\n", head->name);
+        printf("CMD STATE: %s\n", cmd_state_to_str(head->state));
+        printf("-----------------------------------\n");
+        head = head->next;
+    }
+}
+
 int main(void)
 {
     Airplane *plane = NULL;
@@ -280,6 +298,7 @@ int main(void)
     refill(plane, record_command);
     toggle_engine_switch_on(plane, RIGHT, record_command);
     toggle_engine_switch_on(plane, LEFT, record_command);
-    
+    toggle_engine_switch_on(plane, LEFT, record_command);
+    show_flight_recordings(plane); 
     return 0;
 }
