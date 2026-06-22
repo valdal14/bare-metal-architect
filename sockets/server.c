@@ -7,10 +7,11 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <sys/uio.h>
 
 #define PORT 5001
 #define QUEUE_SIZE 2
-
+#define BUFFER_SIZE 1024
 /**
  * @brief Creates a new socket 
  * @return int 
@@ -92,9 +93,9 @@ void start_listening(int server_socket, int backlog)
  * @param int server_socket
  * @param struct sockaddr restrict address pointer
  * @param socklen_t restrict address_len pointer
- * @return void
+ * @return int: The client socket file descriptor value
  */
-void accept_connection(int server_socket, struct sockaddr *restrict address)
+int accept_connection(int server_socket, struct sockaddr *restrict address)
 {
     socklen_t address_len = sizeof(address);
     int accept_result = accept(server_socket, address, &address_len);
@@ -105,16 +106,51 @@ void accept_connection(int server_socket, struct sockaddr *restrict address)
         close(server_socket);
         exit(EXIT_FAILURE);
     }
+
+    return accept_result;
+}
+
+/**
+ * @brief Reads the message sends by the client
+ * @param int client_socket 
+ * @param char buffer pointer
+ * @param ssize_t buffer_size
+ * @return void
+ */
+void read_msn(int client_socket, char *buffer, ssize_t buffer_size)
+{
+
+    ssize_t bytes_read = read(client_socket, buffer, buffer_size - 1);
+    
+    if (bytes_read == -1)
+    {
+        fprintf(stderr, "Error: Reading from file descriptor\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (bytes_read == 0)
+    {
+        fprintf(stderr, "Error: Connection closed or End of File reached.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    buffer[bytes_read] = '\0';
+
+    printf("Received %zd bytes: %s\n", bytes_read, buffer);
 }
 
 int main(void)
 {
+    char buffer[BUFFER_SIZE];
+
     int server_sock = create_socket();
     struct sockaddr_in address = create_socket_address(PORT);
     bind_socket(server_sock, &address);
     start_listening(server_sock, QUEUE_SIZE);
-    accept_connection(server_sock, (struct sockaddr *)&address);
-    
+    int client_socket = accept_connection(server_sock, (struct sockaddr *)&address);
+    // read the client socket
+    read_msn(client_socket, buffer, BUFFER_SIZE);
+
     close(server_sock);
     return 0;
 }
