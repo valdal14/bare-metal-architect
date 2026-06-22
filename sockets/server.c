@@ -96,7 +96,7 @@ void start_listening(int server_socket, int backlog)
  */
 int accept_connection(int server_socket, struct sockaddr *restrict address)
 {
-    socklen_t address_len = sizeof(address);
+    socklen_t address_len = sizeof(struct sockaddr);
     int accept_result = accept(server_socket, address, &address_len);
 
     if(accept_result == -1)
