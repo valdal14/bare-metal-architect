@@ -83,7 +83,7 @@ void log_message(ServerLogger *logger, char *msn, int client_socket)
     }
 
     strncpy(message->msn, msn, msn_size);
-    message->msn[msn_size + 1] = '\0';
+    message->msn[msn_size] = '\0';
     message->client_socket = client_socket;
     message->next = NULL;
 
@@ -245,6 +245,7 @@ void *shutdown_server(ServerLogger *logger)
         printf("Client ID: %d\n", current->client_socket);
         printf("Message  : %s\n", current->msn);
         next_message = current->next;
+        free(current->msn);
         free(current);
         current = next_message;
         printf("----------------------------------------\n");
