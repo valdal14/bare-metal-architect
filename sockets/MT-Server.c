@@ -11,7 +11,7 @@
 #include <pthread.h>
 
 #define PORT 5001
-#define QUEUE_SIZE 2
+#define QUEUE_SIZE 5 
 #define BUFFER_SIZE 1024
 
 // Global Mutex Lock
@@ -19,25 +19,33 @@ pthread_mutex_t logger_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct Message
 {
-    char *msn;
+    char buffer[BUFFER_SIZE];
     struct Message *next; 
+    char *msn;
+    int client_socket;
 } Message;
 
 typedef struct
 {
-    int client_socket;
     struct Message *head;
     struct Message *tail;
+    int server_socket;
     uint8_t total_connection;
 } ServerLogger;
+
+typedef struct {
+    int client_socket;
+    ServerLogger *logger;
+} ThreadArgs;
 
 /**
  * @brief Instanciate a new ServerLogger to monitor the incoming messages 
  * from the client sockets 
  * @param ServerLogger logger double pointer
+ * @param int server_socket
  * @return void
  */
-void init_server_logger(ServerLogger **logger)
+void init_server_logger(ServerLogger **logger, int server_socket)
 {
     ServerLogger *server_logger = (ServerLogger *)calloc(1, sizeof(ServerLogger));
 
@@ -47,11 +55,10 @@ void init_server_logger(ServerLogger **logger)
         exit(EXIT_FAILURE);
     }
 
-    server_logger->client_socket = 0;
     server_logger->head = NULL;
     server_logger->tail = NULL;
     server_logger->total_connection = 0;
-
+    server_logger->server_socket = server_socket;
     *logger = server_logger;
 }
 
@@ -65,7 +72,7 @@ void init_server_logger(ServerLogger **logger)
  */
 void log_message(ServerLogger *logger, char *msn, int client_socket)
 {
-    size_t msn_size = strlen(msn) + 1;
+    size_t msn_size = strlen(msn);
     Message *message = (Message *)malloc(sizeof(Message));
     message->msn = (char *)malloc(sizeof(char) * msn_size);
     
@@ -76,7 +83,8 @@ void log_message(ServerLogger *logger, char *msn, int client_socket)
     }
 
     strncpy(message->msn, msn, msn_size);
-    message->msn[msn_size - 1] = '\0';
+    message->msn[msn_size + 1] = '\0';
+    message->client_socket = client_socket;
     message->next = NULL;
 
     if(logger->head == NULL)
@@ -90,7 +98,6 @@ void log_message(ServerLogger *logger, char *msn, int client_socket)
         logger->tail = message;
     }
 
-    logger->client_socket = client_socket;
     logger->total_connection += 1;
 }
 
@@ -223,77 +230,86 @@ char *read_msn(int client_socket, char *buffer, ssize_t buffer_size)
 }
 
 /**
- * @brief Handles the client connection
- * @param void arg pointer
+ * @brief Shows a recap of the client session and clean up the memory 
+ * @param ServerLogger logger pointer 
+ * @return void
  */
-void *handle_client(void *arg) 
+void *shutdown_server(ServerLogger *logger)
 {
-    ServerLogger *client_msn = (ServerLogger *)arg;
-    
-    if(client_msn == NULL)
+    Message *current = logger->head;
+    Message *next_message = NULL;
+
+    while(current != NULL)
     {
-        fprintf(stderr, "Error: Could not cast the request to the correct type\n");
-        exit(EXIT_FAILURE);
+        printf("----------------------------------------\n");
+        printf("Client ID: %d\n", current->client_socket);
+        printf("Message  : %s\n", current->msn);
+        next_message = current->next;
+        free(current);
+        current = next_message;
+        printf("----------------------------------------\n");
     }
-    
-    printf("Handling new client socket with id: %d\n", client_msn->client_socket);
-    printf("Client Message: %s\n", client_msn->tail->msn);
-    printf("Session: %d\n", client_msn->total_connection);
-    printf("Client Request Registered Successfully\n");
-    close(client_msn->client_socket);
+
+    close(logger->server_socket);
+    free(logger);
+    logger = NULL;
     return NULL;
 }
 
 /**
- * @brief Processes the client request by accepting the request, and spawing a new thread 
- * to lock the resource to avoid race conditions on the ServerLogger data
- * @param int server_socket
- * @param struct sockaddr_in address pointer
- * @param ServerLogger logger pointer
- * @param char buffer pointer
- * @return void
+ * @brief Handles the client connection
+ * @param void arg pointer
  */
-void process_client_request(int server_socket, struct sockaddr_in *address, ServerLogger *logger, char *buffer)
-{
-    int *client_socket = (int *)calloc(1, sizeof(int));
-        
-    if(client_socket == NULL)
-    {
-        fprintf(stderr, "Error: Could not allocate space for the new client socket\n");
-        exit(EXIT_FAILURE);
-    }
+void *handle_client(void *arg) {
     
-    // accept the connection
-    *client_socket = accept_connection(server_socket, (struct sockaddr *)&address);
-    
-    // read the buffer to extract the client message 
-    char *message = read_msn(*client_socket, buffer, BUFFER_SIZE);
+    ThreadArgs *my_args = (ThreadArgs *)arg;
+    int my_socket = my_args->client_socket;
+    ServerLogger *my_logger = my_args->logger;
 
-    // lock and record the new client connection message
+    char buffer[BUFFER_SIZE];
+
+    char *message = read_msn(my_socket, buffer, BUFFER_SIZE);
+
     pthread_mutex_lock(&logger_lock);
-    log_message(logger, message, *client_socket);
+    log_message(my_logger, message, my_socket);
     pthread_mutex_unlock(&logger_lock);
-    // Spawn the thread, passing the memory address of the client_socket
-    pthread_t thread_id;
-    pthread_create(&thread_id, NULL, handle_client, logger);
+
+    close(my_socket);
+    free(my_args);
+
+    return NULL;
 }
 
 int main(void)
 {
-    char buffer[BUFFER_SIZE];
+    //char buffer[BUFFER_SIZE];
     ServerLogger *logger = NULL;
-    init_server_logger(&logger);
-
-    int server_sock = create_socket();
+    
+    int server_socket = create_socket();
+    
+    init_server_logger(&logger, server_socket);
+    
     struct sockaddr_in address = create_socket_address(PORT);
-    bind_socket(server_sock, &address);
-    start_listening(server_sock, QUEUE_SIZE);
+    bind_socket(server_socket, &address);
+    
+    start_listening(server_socket, QUEUE_SIZE);
+    
+    int current_connections = 0;
 
-    while(1)
-    {
-        process_client_request(server_sock, &address, logger, buffer);
-    }
+	while(current_connections < QUEUE_SIZE) {
+	    int client_sock = accept_connection(server_socket, (struct sockaddr *)&address);
+	    current_connections++;
 
-    close(server_sock);
+	    ThreadArgs *args = (ThreadArgs *)malloc(sizeof(ThreadArgs));
+	    args->client_socket = client_sock;
+	    args->logger = logger;
+
+	    pthread_t thread_id;
+	    pthread_create(&thread_id, NULL, handle_client, args);
+	    pthread_detach(thread_id);
+	}
+
+	shutdown_server(logger);
+	
     return 0;
 }
