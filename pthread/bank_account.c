@@ -48,14 +48,29 @@ uint32_t *get_balance(BankAccount *bank_account)
     return balance;
 }
 
+/**
+ * @brief Deposits a new amount to the bank account
+ * @param BankAccount bank_account pointer
+ * @param uint32_t amount
+ * @return void
+ */
+void deposit(BankAccount *bank_account, uint32_t amount)
+{
+    uint32_t *current_balance = get_balance(bank_account);
+    *current_balance += amount;
+}
+
 int main(void)
 {
     BankAccount *bank_account = NULL;
     open_account(&bank_account);
     printf("Account opened at address %p\n", bank_account);
+    deposit(bank_account, 100);
+    deposit(bank_account, 300);
+    
     uint32_t *current_balance = get_balance(bank_account);
-    printf("Current Balance = %u\n", bank_account->balance);
     printf("Current Balance = %u\n", *current_balance);
+    printf("Current Balance = %u\n", bank_account->balance);
 
     return 0;
 }
