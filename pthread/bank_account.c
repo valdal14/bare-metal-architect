@@ -68,7 +68,6 @@ void open_account(BankAccount **ba)
 uint32_t *get_balance(BankAccount *bank_account)
 {
     printf("Getting Balance...\n");
-    sleep(1);
     uint32_t *balance = &bank_account->balance;
     return balance;
 }
@@ -126,11 +125,28 @@ void *deposit_exe(void *arg)
     return NULL;
 }
 
+/**
+ * @brief Callback that internally calls the get_balance
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *user_balance(void *arg)
+{
+    DepositProcess *bank = (DepositProcess *)arg;
+    check_account(bank->bank);
+    pthread_mutex_lock(&mutex_account);
+    uint32_t *balance = get_balance(bank->bank);
+    pthread_mutex_unlock(&mutex_account);
+
+    return (void *)balance;
+}
+
 int main(void)
 {
     pthread_t user1;
     pthread_t user2;
-    
+    pthread_t u_balance;
+
     // Opening a new Bank Account   
     BankAccount *bank_account = NULL;
     open_account(&bank_account);
@@ -138,15 +154,21 @@ int main(void)
     // Get ready to deposit
     DepositProcess dp1 = prepare_for_deposit(&bank_account, 240);
     DepositProcess dp2 = prepare_for_deposit(&bank_account, 360);
-    // Check the thread return value and xxecute the deposit concurrently/in-parallel  
+    // Check the thread return value and execute the deposit concurrently/in-parallel  
     check_thread(pthread_create(&user1, NULL, deposit_exe, (void *)&dp1));
     check_thread(pthread_create(&user2, NULL, deposit_exe, (void *)&dp2));
     // Joins the threads and get the balance 
     check_thread(pthread_join(user1, NULL));
     check_thread(pthread_join(user2, NULL));
-    uint32_t *new_balance = get_balance(bank_account);
+    
+    check_thread(pthread_create(&u_balance, NULL, user_balance, (void *)&dp1));
+    
+    uint32_t *new_balance = NULL;
+    check_thread(pthread_join(u_balance, (void **)&new_balance));
     printf("Current Balance = %u\n", *new_balance);
-
-
+    
+    // clean up 
+    free(bank_account);
+    bank_account = NULL;
     return 0;
 }
