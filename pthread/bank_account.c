@@ -35,6 +35,20 @@ void check_account(void *account)
 }
 
 /**
+ * @brief Checks the returned value of a posix thread function
+ * @param int thread_return_value
+ * @return void
+ */
+void check_thread(int thread_return_value)
+{
+    if(thread_return_value != 0)
+    {
+        fprintf(stderr, "There was a problem with the thread, the app will terminate\n");
+        exit(EXIT_FAILURE);
+    }
+}
+
+/**
  * @brief Opens a new bank account
  * @param BankAccount ba double pointer
  */
@@ -120,12 +134,12 @@ int main(void)
     // Get ready to deposit
     DepositProcess dp1 = prepare_for_deposit(&bank_account, 240);
     DepositProcess dp2 = prepare_for_deposit(&bank_account, 360);
-    // Execute the deposit concurrently/parallel 
-    pthread_create(&user1, NULL, deposit_exe, (void *)&dp1);
-    pthread_create(&user2, NULL, deposit_exe, (void *)&dp2);
+    // Check the thread return value and xxecute the deposit concurrently/in-parallel  
+    check_thread(pthread_create(&user1, NULL, deposit_exe, (void *)&dp1));
+    check_thread(pthread_create(&user2, NULL, deposit_exe, (void *)&dp2));
     // Joins the threads and get the balance 
-    pthread_join(user1, NULL);
-    pthread_join(user2, NULL);
+    check_thread(pthread_join(user1, NULL));
+    check_thread(pthread_join(user2, NULL));
     uint32_t *new_balance = get_balance(bank_account);
     printf("Current Balance = %u\n", *new_balance);
 
