@@ -68,40 +68,66 @@ void deposit(DepositProcess *deposit)
 {
     printf("Depositing amount: %u\n", deposit->amount);
     sleep(2);
+    // add a lock
+    pthread_mutex_lock(&mutex_account);
+    // update the shared balance state
     uint32_t *current_balance = get_balance(deposit->bank);
     *current_balance += deposit->amount;
+    // remove the lock
+    pthread_mutex_unlock(&mutex_account);
     printf("Deposit process completed\n");
 }
 
 /**
- * @brief Starts the Depositing process
+ * @brief Prepares the data needed to execute a new deposit operation
  * @param BankAccount bank_account pointer
  * @param uint32_t amount
  * @return DepositProcess
  */
-DepositProcess process_deposit(BankAccount *bank_account, uint32_t amount)
+DepositProcess prepare_for_deposit(BankAccount **bank_account, uint32_t amount)
 {
     DepositProcess dp;
-    dp.bank = bank_account;
+    dp.bank = *bank_account;
     dp.amount = amount;
     return dp;
 }
 
+void *deposit_exe(void *arg)
+{
+    DepositProcess *dp = (DepositProcess *)arg;
+    
+    if(dp == NULL)
+    {
+        fprintf(stderr, "Could not process the deposit operation\n");
+        exit(EXIT_FAILURE);
+    }
+    // execute the deposit 
+    deposit(dp);
+
+    return NULL;
+}
+
 int main(void)
 {
-    pthread_t *user1;
-    pthread_t *user2;
-    
+    pthread_t user1;
+    pthread_t user2;
+    pthread_t get_b;
+
+    // Opening a new Bank Account   
     BankAccount *bank_account = NULL;
     open_account(&bank_account);
     printf("Account opened at address %p\n", bank_account);
-
-    DepositProcess dp1 = process_deposit(bank_account, 540);
-    deposit(&dp1);
-
-    uint32_t *current_balance = get_balance(bank_account);
-    printf("Current Balance = %u\n", *current_balance);
-    printf("Current Balance = %u\n", bank_account->balance);
+    // Get ready to deposit
+    DepositProcess dp1 = prepare_for_deposit(&bank_account, 240);
+    DepositProcess dp2 = prepare_for_deposit(&bank_account, 360);
+    // Execute the deposit concurrently/parallel 
+    pthread_create(&user1, NULL, deposit_exe, (void *)&dp1);
+    pthread_create(&user2, NULL, deposit_exe, (void *)&dp2);
+    // Joins the threads and get the balance 
+    pthread_join(user1, NULL);
+    pthread_join(user2, NULL);
+    uint32_t *new_balance = get_balance(bank_account);
+    printf("Current Balance = %u\n", *new_balance);
 
 
     return 0;
