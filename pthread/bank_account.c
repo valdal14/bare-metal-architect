@@ -4,10 +4,19 @@
 #include <pthread.h>
 #include <unistd.h>
 
+pthread_mutex_t mutex_account = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t log_condition = PTHREAD_COND_INITIALIZER;
+
 typedef struct
 {
     uint32_t balance;
 } BankAccount;
+
+typedef struct
+{
+    BankAccount *bank;
+    uint32_t amount;
+} DepositProcess;
 
 /**
  * @brief Checks the allocated objects
@@ -44,33 +53,56 @@ void open_account(BankAccount **ba)
  */
 uint32_t *get_balance(BankAccount *bank_account)
 {
+    printf("Getting Balance...\n");
+    sleep(1);
     uint32_t *balance = &bank_account->balance;
     return balance;
 }
 
 /**
  * @brief Deposits a new amount to the bank account
- * @param BankAccount bank_account pointer
- * @param uint32_t amount
+ * @param DepositProcess deposit
  * @return void
  */
-void deposit(BankAccount *bank_account, uint32_t amount)
+void deposit(DepositProcess *deposit)
 {
-    uint32_t *current_balance = get_balance(bank_account);
-    *current_balance += amount;
+    printf("Depositing amount: %u\n", deposit->amount);
+    sleep(2);
+    uint32_t *current_balance = get_balance(deposit->bank);
+    *current_balance += deposit->amount;
+    printf("Deposit process completed\n");
+}
+
+/**
+ * @brief Starts the Depositing process
+ * @param BankAccount bank_account pointer
+ * @param uint32_t amount
+ * @return DepositProcess
+ */
+DepositProcess process_deposit(BankAccount *bank_account, uint32_t amount)
+{
+    DepositProcess dp;
+    dp.bank = bank_account;
+    dp.amount = amount;
+    return dp;
 }
 
 int main(void)
 {
+    pthread_t *user1;
+    pthread_t *user2;
+    
     BankAccount *bank_account = NULL;
     open_account(&bank_account);
     printf("Account opened at address %p\n", bank_account);
-    deposit(bank_account, 100);
-    deposit(bank_account, 300);
-    
+
+    DepositProcess dp1 = process_deposit(bank_account, 540);
+    deposit(&dp1);
+
     uint32_t *current_balance = get_balance(bank_account);
     printf("Current Balance = %u\n", *current_balance);
     printf("Current Balance = %u\n", bank_account->balance);
+
 
     return 0;
 }
