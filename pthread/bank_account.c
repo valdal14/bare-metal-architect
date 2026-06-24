@@ -106,6 +106,11 @@ DepositProcess prepare_for_deposit(BankAccount **bank_account, uint32_t amount)
     return dp;
 }
 
+/**
+ * @brief Callback that internally calls the deposit process 
+ * @param void arg pointer
+ * @return void pointer
+ */
 void *deposit_exe(void *arg)
 {
     DepositProcess *dp = (DepositProcess *)arg;
@@ -125,8 +130,7 @@ int main(void)
 {
     pthread_t user1;
     pthread_t user2;
-    pthread_t get_b;
-
+    
     // Opening a new Bank Account   
     BankAccount *bank_account = NULL;
     open_account(&bank_account);
