@@ -70,6 +70,10 @@ int main(void)
         pthread_join(user1, (void **)&sensor);
 
     check_sensor_state(sensor);
-    
+   
+    // destroy the mutex
+    pthread_mutex_destroy(&mutex);
+    free(sensor);
+
     return 0;
 }
