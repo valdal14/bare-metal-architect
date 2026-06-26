@@ -11,7 +11,7 @@
 #define P_W_BIT 3
 
 #define BUFFER_SIZE 8
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex;
 pthread_cond_t not_empty;
 pthread_cond_t not_full;
 
@@ -95,13 +95,42 @@ void *store_sensor_data(void *arg)
     return NULL;
 }
 
+/**
+ * @brief Inits the mutex and POSIX thread conditions
+ * @return void
+ */
+void init_concurrency_model(void)
+{
+    pthread_cond_init(&not_empty, NULL);
+    pthread_cond_init(&not_full, NULL);
+    pthread_mutex_init(&mutex, NULL); 
+}
+
+/**
+ * @brief Cleans up the allocated objects, the POSIX
+ * conditions and the mutex 
+ * @param Telemetry telemetry pointer
+ * @return void
+ */
+void clean_up(Telemetry *telemetry)
+{
+    free(telemetry);
+    pthread_cond_destroy(&not_empty);
+    pthread_cond_destroy(&not_full);
+    pthread_mutex_destroy(&mutex);
+}
+
 int main(void)
 {
-
     TelemetryProcess process;
     Telemetry *telemetry = NULL;
+    init_concurrency_model();
     init_telemetry(&telemetry);
     printf("Telemetry allocated at address %p\n", telemetry);
+
+
+
+    clean_up(telemetry);
 
     return 0;
 }
