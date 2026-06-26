@@ -11,9 +11,9 @@
 #define P_W_BIT 3
 
 #define BUFFER_SIZE 8
-pthread_mutex_t mutex;
-pthread_cond_t not_empty;
-pthread_cond_t not_full;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t not_empty = PTHREAD_COND_INITIALIZER;
+pthread_cond_t not_full = PTHREAD_COND_INITIALIZER;
 
 typedef enum
 {
@@ -144,9 +144,9 @@ void init_tracking(F1Tracking **tracker, Telemetry **telemetry, TelemetryProcess
  * @param void arg pointer
  * @return void pointer
  */
-void *read_sensor(void *arg)
+void *read_sensor_data(void *arg)
 {
-    Telemetry *telemetry = (Telemetry *)arg;
+    F1Tracking *tracker = (F1Tracking *)arg;
     return NULL;
 }
 
@@ -158,19 +158,8 @@ void *read_sensor(void *arg)
  */
 void *store_sensor_data(void *arg)
 {
-    Telemetry *telemetry = (Telemetry *)arg;
+    F1Tracking *tracker = (F1Tracking *)arg;
     return NULL;
-}
-
-/**
- * @brief Inits the mutex and POSIX thread conditions
- * @return void
- */
-void init_concurrency_model(void)
-{
-    pthread_cond_init(&not_empty, NULL);
-    pthread_cond_init(&not_full, NULL);
-    pthread_mutex_init(&mutex, NULL); 
 }
 
 /**
@@ -192,6 +181,12 @@ void clean_up(F1Tracking *tracker)
     tracker = NULL;
 }
 
+void start_reading(F1Tracking *tracker)
+{
+    printf("Start Reading Sensor Data\n");
+    pthread_create(&tracker->p->read, NULL, read_sensor_data, (void *)tracker);
+}
+
 int main(void)
 {
     TelemetryType tracker = TRACKER;
@@ -202,8 +197,6 @@ int main(void)
     Telemetry *telemetry = NULL;
     F1Tracking *f1_tracker = NULL;
 
-    init_concurrency_model();
-    
     init_telemetry(&telemetry, pthread_reader);
     init_telemetry_process(&telemetry_process, pthread_writer);
     
@@ -212,6 +205,12 @@ int main(void)
     printf("Telemetry allocated at address %p\n", f1_tracker->t);
     printf("Telemetry Process allocated at address %p\n", f1_tracker->p);
 
+    start_reading(f1_tracker);
+
+    // Join and wait 
+    pthread_join(f1_tracker->p->read, NULL);
+
+    // Start the memory clean up 
     clean_up(f1_tracker);
 
     return 0;
