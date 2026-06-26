@@ -15,6 +15,12 @@ pthread_mutex_t mutex;
 pthread_cond_t not_empty;
 pthread_cond_t not_full;
 
+typedef enum
+{
+    READER,
+    WRITER,
+    TRACKER
+} TelemetryType;
 
 typedef struct
 {
@@ -36,35 +42,100 @@ typedef struct
     uint8_t states;
 } TelemetryProcess;
 
+typedef struct 
+{
+    Telemetry *t;
+    TelemetryProcess *p;
+} F1Tracking;
+
 /**
  * @brief Helper method to check the Telemetry allocation 
- * @param Telemetry telemetry pointer
+ * @param void f1_telemetry pointer
+ * @param TelemetryType type
  * @return void
  */
-void validate_telemetry(Telemetry *telemetry)
+void validate_telemetry(void *f1_telemetry, TelemetryType type)
 {
-    if(telemetry == NULL)
+    switch(type)
     {
-        fprintf(stderr, "Could not allocate space for the Telemetry\n");
-        exit(EXIT_FAILURE);
+        case READER:
+            if((Telemetry *)f1_telemetry == NULL)
+            {
+                fprintf(stderr, "Could not allocate space for the Telemetry\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
+        case WRITER:
+            if((TelemetryProcess *)f1_telemetry == NULL)
+            {
+                fprintf(stderr, "Could not allocate space for the TelemetryProcess\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
+        case TRACKER:
+            if((F1Tracking *)f1_telemetry == NULL)
+            {
+                fprintf(stderr, "Could not allocate space for the F1Tracking\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
+        default:
+            fprintf(stderr, "Unsupported TelemetryType\n");
+            exit(EXIT_FAILURE);
     }
 }
 
 /**
- * @brief Init the Telemetry Data Structure
+ * @brief Inits the Telemetry Data Structure
  * @param Telemetry telemetry double pointer
+ * @param TelemetryType type
  * @return void
  */
-void init_telemetry(Telemetry **telemetry)
+void init_telemetry(Telemetry **telemetry, TelemetryType type)
 {
     Telemetry *t = (Telemetry *)calloc(1, sizeof(Telemetry));
-    validate_telemetry(t);
+    validate_telemetry(t, type);
 
     t->count = 0;
     t->head = 0;
     t->tail = 0;
 
     *telemetry = t;
+}
+
+/**
+ * @brief Inits the TelemetryProcess Data Structure
+ * @param TelemetryProcess telemetry_process double pointer
+ * @param TelemetryType type
+ * @return void
+ */
+void init_telemetry_process(TelemetryProcess **telemetry_process, TelemetryType type)
+{
+    TelemetryProcess *tp = (TelemetryProcess *)calloc(1, sizeof(TelemetryProcess));
+    validate_telemetry(tp, type);
+    
+    tp->states = DEFAULT_STATE_MASK;
+
+    *telemetry_process = tp;
+}
+
+/**
+ * @brief Inits the F1Tracking Data Structure
+ * @param F1Tracking tracker double pointer
+ * @param Telemetry telemetry double pointer
+ * @param TelemetryProcess process double pointer
+ * @param TelemetryType type
+ * @return void
+ */
+void init_tracking(F1Tracking **tracker, Telemetry **telemetry, TelemetryProcess **process, TelemetryType type) 
+{
+   F1Tracking *f1_tracker = (F1Tracking *)calloc(1, sizeof(F1Tracking));
+   validate_telemetry(f1_tracker, type);
+
+   f1_tracker->t = *telemetry;
+   f1_tracker->p = *process;
+
+   *tracker = f1_tracker;
 }
 
 /**
@@ -76,8 +147,6 @@ void init_telemetry(Telemetry **telemetry)
 void *read_sensor(void *arg)
 {
     Telemetry *telemetry = (Telemetry *)arg;
-    validate_telemetry(telemetry);
-
     return NULL;
 }
 
@@ -90,8 +159,6 @@ void *read_sensor(void *arg)
 void *store_sensor_data(void *arg)
 {
     Telemetry *telemetry = (Telemetry *)arg;
-    validate_telemetry(telemetry);
-
     return NULL;
 }
 
@@ -109,28 +176,43 @@ void init_concurrency_model(void)
 /**
  * @brief Cleans up the allocated objects, the POSIX
  * conditions and the mutex 
- * @param Telemetry telemetry pointer
+ * @param F1Tracking tracker pointer
  * @return void
  */
-void clean_up(Telemetry *telemetry)
+void clean_up(F1Tracking *tracker)
 {
-    free(telemetry);
+    free(tracker->t);
+    free(tracker->p);
+    free(tracker);
     pthread_cond_destroy(&not_empty);
     pthread_cond_destroy(&not_full);
     pthread_mutex_destroy(&mutex);
+    tracker->t = NULL;
+    tracker->p = NULL;
+    tracker = NULL;
 }
 
 int main(void)
 {
-    TelemetryProcess process;
+    TelemetryType tracker = TRACKER;
+    TelemetryType pthread_reader = READER;
+    TelemetryType pthread_writer = WRITER;
+    
+    TelemetryProcess *telemetry_process = NULL;
     Telemetry *telemetry = NULL;
+    F1Tracking *f1_tracker = NULL;
+
     init_concurrency_model();
-    init_telemetry(&telemetry);
-    printf("Telemetry allocated at address %p\n", telemetry);
+    
+    init_telemetry(&telemetry, pthread_reader);
+    init_telemetry_process(&telemetry_process, pthread_writer);
+    
+    init_tracking(&f1_tracker, &telemetry, &telemetry_process, tracker);
+    printf("F1Tracking allocated at address %p\n", f1_tracker);
+    printf("Telemetry allocated at address %p\n", f1_tracker->t);
+    printf("Telemetry Process allocated at address %p\n", f1_tracker->p);
 
-
-
-    clean_up(telemetry);
+    clean_up(f1_tracker);
 
     return 0;
 }
