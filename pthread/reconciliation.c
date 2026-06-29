@@ -5,6 +5,22 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#define COST_CENTER_CODE 7
+#define DS_MAX_SIZE 10
+// Bitwise Macros
+#define BIT(x) (1 << (x))
+#define DEFAULT_MASK 0x00
+#define SOURCE_BIT 0 
+#define DEST_BIT 1 
+#define PROCESS_BIT 3 
+#define COMPLETION_MASK 0x0B
+
+typedef enum
+{
+    DS,
+    PD 
+} PipelineType;
+
 typedef struct 
 {
     /**
@@ -15,7 +31,7 @@ typedef struct
      * 16 bytes + 0 paddings = 16 bytes 
      */
     struct PipelineData *next;
-    char cc_code[7];
+    char cc_code[COST_CENTER_CODE];
     /**
      * bit 0 source
      * bit 2 destination
@@ -25,8 +41,76 @@ typedef struct
 
 } PipelineData;
 
+typedef struct
+{
+    /**
+     * 8 bytes 
+     * 8 bytes 
+     * 4 bytes
+     * 4 bytes 
+     * -------
+     * 24 bytes + 2 paddings
+     */
+    struct PipelineData *head;
+    struct PipelineData *tail;
+    uint32_t size;
+    uint32_t capacity;
+} DataSource;
+
+/**
+ * @brief Checks the allocation of a given PipelineType
+ * @param void pointer
+ * @param PipelineType type
+ * @return void
+ */
+void check_allocation(void *type, PipelineType p_type)
+{
+    switch(p_type)
+    {
+        case DS:
+            if((DataSource *)type == NULL)
+            {
+                fprintf(stderr, "Casting DataSource type failed\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
+        case PD:
+            if((PipelineData *)type == NULL)
+            {
+                fprintf(stderr, "Casting PipelineData type failed\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
+        default:
+            fprintf(stderr, "Unsupported Type Provided\n");
+            exit(EXIT_FAILURE);
+    }
+}
+
+/**
+ * @brief Inits a DataSource
+ * @param DataSource datasource double pointer
+ * @param PipelineType type
+ * @return void
+ */
+void init_datasource(DataSource **datasource, PipelineType type)
+{
+    DataSource *ds = (DataSource *)calloc(1, sizeof(DataSource));
+    check_allocation(ds, type);
+    
+    ds->head = NULL;
+    ds->tail = NULL;
+    ds->size = 0;
+    ds->capacity = DS_MAX_SIZE;
+
+    *datasource = ds;
+}
 
 int main(void)
 {
+    DataSource *ds = NULL;
+    init_datasource(&ds, DS);
+    printf("DataSource Allocated at address %p\n", ds);
+
     return 0;
 }
