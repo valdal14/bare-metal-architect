@@ -19,6 +19,13 @@
 // DSs 
 #define SNOWFLAKE "SNOWF"
 #define ANAPLAN "ANAPL"
+// Concurrency Primitives
+pthread_cond_t ready = PTHREAD_COND_INITIALIZER;
+pthread_cond_t process_status = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+// Global state 
+uint8_t reconciliate_state = 0;
+uint8_t process_reco = 0;
 
 typedef enum
 {
@@ -50,7 +57,7 @@ typedef struct PipelineData
 
 } PipelineData;
 
-typedef struct
+typedef struct DataSource
 {
     /**
      * 8 bytes 
@@ -64,10 +71,22 @@ typedef struct
     struct PipelineData *head;
     struct PipelineData *tail;
     char ds_code[DS_CODE];
-    uint8_t size;
-    uint8_t capacity;
-    
+    uint32_t size;
+    uint32_t capacity;
 } DataSource;
+
+typedef struct Extractor
+{
+    struct DataSource *ds;
+    uint8_t quantity;
+} Extractor;
+
+typedef struct ReconciliateDS
+{
+    Extractor *ds1;
+    Extractor *ds2;
+
+} ReconciliateDS;
 
 /**
  * @brief Checks the allocation of a given PipelineType
@@ -218,12 +237,38 @@ void extract_and_process(DataSource *ds, uint8_t size)
         exit(EXIT_FAILURE);
     }
 
+    pthread_mutex_lock(&mutex);
+    char *ds_code = ds->ds_code;
+    pthread_mutex_unlock(&mutex);
+
     for(int i = 0; i < size; i++)
     {
-        printf("Extracting Data From DataSource %s packet: %d\n", ds->ds_code, i);
+        printf("Extracting Data From DataSource %s packet: %d\n", ds_code, i);
         sleep(1);
+        pthread_mutex_lock(&mutex);
         add_data(ds, i, PD, set_metadata);
+        pthread_mutex_unlock(&mutex);
     }
+
+    PipelineData *current = ds->head;
+    
+    while(current != NULL)
+    {
+        pthread_mutex_lock(&mutex);
+        current->metadata |= BIT(RECONCILIATION_READY_BIT);
+        uint8_t metadata_status = current->metadata;
+        pthread_mutex_unlock(&mutex);
+        current = current->next;
+
+        sleep(1);
+        printf("DataSource %s packet code: %d\n", ds_code, metadata_status);
+    }
+
+    // set the DataSource ready for reconciliation
+    pthread_mutex_lock(&mutex);
+    reconciliate_state += 1;
+    if(reconciliate_state == 2) pthread_cond_broadcast(&ready);
+    pthread_mutex_unlock(&mutex);
 }
 
 /**
@@ -236,11 +281,16 @@ void print_ds_data(DataSource *ds)
     PipelineData *current = ds->head;
     if(current == NULL) return;
 
+    pthread_mutex_lock(&mutex);
     printf("\nDataSource [%s] current size = %d\n", ds->ds_code, ds->size);
     printf("-----------------------------------\n");
-    
+    pthread_mutex_unlock(&mutex);
+
     while(current != NULL)
     {
+        sleep(1);
+
+        pthread_mutex_lock(&mutex);
         printf("CCC: %d\n", current->cc_code);
         
         if((current->metadata & BIT(SOURCE_BIT)) == 0)
@@ -255,8 +305,14 @@ void print_ds_data(DataSource *ds)
         }
         
         current = current->next;
+        pthread_mutex_unlock(&mutex);
         printf("-----------------------------------\n");
     }
+
+    pthread_mutex_lock(&mutex);
+    process_reco += 1;
+    if(process_reco == 2) pthread_cond_broadcast(&process_status);
+    pthread_mutex_unlock(&mutex);
 }
 
 /**
@@ -282,17 +338,127 @@ void clean(DataSource *ds)
     ds = NULL;
 }
 
+/**
+ * @brief pthread_create callback to extract the data from a given DataSource
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *extract(void *arg)
+{
+    Extractor *ext = (Extractor *)arg;
+    
+    if(ext == NULL)
+    {
+        fprintf(stderr, "Could not cast the Extractor\n");
+        exit(EXIT_FAILURE);
+    }
+
+    extract_and_process(ext->ds, ext->quantity); 
+
+    return (void *)ext;
+}
+
+/**
+ * @brief pthread_create callback to start the reconciliate process 
+ * @param void arg pointer
+ * @return void
+ */
+void *start_reconciliation(void *arg)
+{
+    ReconciliateDS *reco = (ReconciliateDS *)arg;
+    if(reco == NULL) exit(EXIT_FAILURE);
+    
+    pthread_mutex_lock(&mutex);
+    
+    while(reconciliate_state != 2)
+    {
+        pthread_cond_wait(&ready, &mutex);
+    }
+    
+    pthread_mutex_unlock(&mutex);
+    
+    print_ds_data(reco->ds1->ds);    
+    print_ds_data(reco->ds2->ds);    
+
+    return (void *)reco;
+}
+
+/**
+ * @brief pthread_create callback to verify the status of the reconciliation process
+ * @param void arg pointer
+ * @return void
+ */
+void *process_reconciliation(void *arg)
+{
+    ReconciliateDS *reco = (ReconciliateDS *)arg;
+    
+    pthread_mutex_lock(&mutex);
+
+    while(process_reco != 2)
+    {
+        pthread_cond_wait(&process_status, &mutex);
+    }
+
+    DataSource *c1 = reco->ds1->ds;
+    DataSource *c2 = reco->ds2->ds;
+   
+    printf("\n--- Reconciliation Status ---\n");
+
+    if(c1->size != c2->size)
+    {
+        fprintf(stderr, "Reconciliate Failed. %s size = %d while %s size = %d\n", c1->ds_code, c1->size, c2->ds_code, c2->size);
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        printf("Reconciliation Process Completed Successfully\n");
+        printf("%s and %s DataSources have the same size and the total package is: %d\n", c1->ds_code, c2->ds_code, (c1->size + c2->size));
+    }
+
+    pthread_mutex_unlock(&mutex);
+
+    return (void *)reco;
+
+}
+
 int main(void)
 {
+    pthread_t snow_ext, ana_ext, reconciliate, process;
+
     DataSource *snowflake = NULL;
     DataSource *anaplan = NULL;
     init_datasource(&snowflake, DS, SNOWFLAKE);
     init_datasource(&anaplan, DS, ANAPLAN);
     printf("DataSource %s Allocated at address %p\n", snowflake->ds_code, snowflake);
     printf("DataSource %s Allocated at address %p\n", anaplan->ds_code, anaplan);
-    // Extracting the data and copying to the current LL DataSource
-    extract_and_process(snowflake, 10); 
-    print_ds_data(snowflake);
+    // Define the extraction process 
+    Extractor snow;
+    snow.ds = snowflake;
+    snow.quantity = 6;
+
+    Extractor ana;
+    ana.ds = anaplan;
+    ana.quantity = 6;
+
+    ReconciliateDS reco;
+    reco.ds1 = &snow;
+    reco.ds2 = &ana;
+
+    // Create dedicated, empty pointers to catch the return values
+    void *snow_res = NULL;
+    void *ana_res = NULL;
+    void *reco_res = NULL;
+    void *process_reco_res = NULL;
+
+    pthread_create(&snow_ext, NULL, extract, (void *)&snow);
+    pthread_create(&ana_ext, NULL, extract, (void *)&ana);
+    pthread_create(&reconciliate, NULL, start_reconciliation, (void *)&reco);
+    pthread_create(&process, NULL, process_reconciliation, (void *)&reco);
+
+    pthread_join(snow_ext, &snow_res);
+    pthread_join(ana_ext, &ana_res);
+    pthread_join(reconciliate, &reco_res);
+    pthread_join(process, &process_reco_res);
 
     clean(snowflake);
     clean(anaplan);
