@@ -5,8 +5,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#define COST_CENTER_CODE 7
-#define DS_MAX_SIZE 10
+#define DS_MAX_SIZE 100
 #define DS_CODE 6
 // Bitwise Macros
 #define BIT(x) (1 << (x))
@@ -37,7 +36,7 @@ typedef struct PipelineData
      * 16 bytes + 0 paddings 
      */
     struct PipelineData *next;
-    char cc_code[COST_CENTER_CODE];
+    uint8_t cc_code;
     /**
      * bit 0 source 
      * bit 2 destination
@@ -165,12 +164,12 @@ void set_metadata(PipelineData *pd, uint8_t ds_code)
 /**
  * @brief Adds a new PipelineData to the DataSource  
  * @param DataSource ds pointer
- * @param char cc_code
+ * @param uint8_t cc_code
  * @param PipelineType type
  * @param void(*handle_metadata)(PipelineData *pd, uint8_t source_code)
  * @return void
  */
-void add_data(DataSource *ds, char cc_code[COST_CENTER_CODE], PipelineType type, void(*handle_metadata)(PipelineData *pd, uint8_t source_code))
+void add_data(DataSource *ds, uint8_t cc_code, PipelineType type, void(*handle_metadata)(PipelineData *pd, uint8_t source_code))
 {
     if(ds->size + 1 > ds->capacity)
     {
@@ -178,20 +177,11 @@ void add_data(DataSource *ds, char cc_code[COST_CENTER_CODE], PipelineType type,
         exit(EXIT_FAILURE);
     }
 
-    uint8_t cc_code_size = strlen(cc_code) + 1;
-
-    if(cc_code_size != COST_CENTER_CODE)
-    {
-        fprintf(stderr, "Cost Center code must be 6 chars length\n");
-        exit(EXIT_FAILURE);
-    }
-
     // allocate space for the new PipelineData node
     PipelineData *pd = (PipelineData *)malloc(sizeof(PipelineData));
     check_allocation(pd, type);
-    // copy the cc_code
-    strncpy(pd->cc_code, cc_code, cc_code_size);
-    pd->cc_code[cc_code_size] = '\0';
+    // add the data cc_code
+    pd->cc_code = cc_code;
     // Set PipelineData Metadata
     uint8_t ds_meta_source = validate_ds_code(ds->ds_code);
     handle_metadata(pd, ds_meta_source);    
@@ -215,6 +205,28 @@ void add_data(DataSource *ds, char cc_code[COST_CENTER_CODE], PipelineType type,
 }
 
 /**
+ * @brief Simulates the data extraction and processing 
+ * @param DataSource ds pointer
+ * @param uint8_t size
+ * @return void
+ */
+void extract_and_process(DataSource *ds, uint8_t size)
+{
+    if(size > DS_MAX_SIZE)
+    {
+        fprintf(stderr, "The size of the data to extract is greater than the max capacity\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for(int i = 0; i < size; i++)
+    {
+        printf("Extracting Data From DataSource %s packet: %d\n", ds->ds_code, i);
+        sleep(1);
+        add_data(ds, i, PD, set_metadata);
+    }
+}
+
+/**
  * @brief Prints the PipelineData stored in the DataSource
  * @param DataSource ds pointer
  * @return void
@@ -229,7 +241,7 @@ void print_ds_data(DataSource *ds)
     
     while(current != NULL)
     {
-        printf("CCC: %s\n", current->cc_code);
+        printf("CCC: %d\n", current->cc_code);
         
         if((current->metadata & BIT(SOURCE_BIT)) == 0)
         {
@@ -278,11 +290,9 @@ int main(void)
     init_datasource(&anaplan, DS, ANAPLAN);
     printf("DataSource %s Allocated at address %p\n", snowflake->ds_code, snowflake);
     printf("DataSource %s Allocated at address %p\n", anaplan->ds_code, anaplan);
-    add_data(snowflake, "CCIT01", PD, set_metadata);
-    add_data(snowflake, "CCIT02", PD, set_metadata);
-    add_data(snowflake, "CCIT03", PD, set_metadata);
-    print_ds_data(snowflake); 
-    
+    // Extracting the data and copying to the current LL DataSource
+    extract_and_process(snowflake, 4); 
+    print_ds_data(snowflake);
 
     clean(snowflake);
     clean(anaplan);
