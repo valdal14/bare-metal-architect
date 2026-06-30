@@ -247,6 +247,29 @@ void print_ds_data(DataSource *ds)
     }
 }
 
+/**
+ * @brief Removes all allocated objects
+ * @param DataSource ds pointer
+ * @return void
+ */
+void clean(DataSource *ds)
+{
+    PipelineData *current = ds->head;
+    if(current == NULL) return;
+
+    PipelineData *next_node = NULL;
+
+    while(current != NULL)
+    {
+        next_node = current->next;
+        free(current);
+        current = next_node;
+    }
+
+    free(ds);
+    ds = NULL;
+}
+
 int main(void)
 {
     DataSource *snowflake = NULL;
@@ -259,5 +282,9 @@ int main(void)
     add_data(snowflake, "CCIT02", PD, set_metadata);
     add_data(snowflake, "CCIT03", PD, set_metadata);
     print_ds_data(snowflake); 
+    
+
+    clean(snowflake);
+    clean(anaplan);
     return 0;
 }
