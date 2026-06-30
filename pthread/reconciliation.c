@@ -236,7 +236,7 @@ void print_ds_data(DataSource *ds)
     PipelineData *current = ds->head;
     if(current == NULL) return;
 
-    printf("DataSource [%s] current size = %d\n", ds->ds_code, ds->size);
+    printf("\nDataSource [%s] current size = %d\n", ds->ds_code, ds->size);
     printf("-----------------------------------\n");
     
     while(current != NULL)
@@ -291,7 +291,7 @@ int main(void)
     printf("DataSource %s Allocated at address %p\n", snowflake->ds_code, snowflake);
     printf("DataSource %s Allocated at address %p\n", anaplan->ds_code, anaplan);
     // Extracting the data and copying to the current LL DataSource
-    extract_and_process(snowflake, 4); 
+    extract_and_process(snowflake, 10); 
     print_ds_data(snowflake);
 
     clean(snowflake);
