@@ -7,6 +7,7 @@
 
 #define COST_CENTER_CODE 7
 #define DS_MAX_SIZE 10
+#define DS_CODE 6
 // Bitwise Macros
 #define BIT(x) (1 << (x))
 #define DEFAULT_MASK 0x00
@@ -28,7 +29,7 @@ typedef struct
      * 7 byte
      * 1 byte
      * -------
-     * 16 bytes + 0 paddings = 16 bytes 
+     * 16 bytes + 0 paddings 
      */
     struct PipelineData *next;
     char cc_code[COST_CENTER_CODE];
@@ -46,15 +47,18 @@ typedef struct
     /**
      * 8 bytes 
      * 8 bytes 
-     * 4 bytes
-     * 4 bytes 
+     * 6 bytes
+     * 1 byte
+     * 1 byte
      * -------
-     * 24 bytes + 2 paddings
+     * 24 bytes + 0 paddings 
      */
     struct PipelineData *head;
     struct PipelineData *tail;
-    uint32_t size;
-    uint32_t capacity;
+    char ds_code[DS_CODE];
+    uint8_t size;
+    uint8_t capacity;
+    
 } DataSource;
 
 /**
@@ -91,13 +95,24 @@ void check_allocation(void *type, PipelineType p_type)
  * @brief Inits a DataSource
  * @param DataSource datasource double pointer
  * @param PipelineType type
+ * @param char ds_code
  * @return void
  */
-void init_datasource(DataSource **datasource, PipelineType type)
+void init_datasource(DataSource **datasource, PipelineType type, char code[DS_CODE])
 {
+    uint8_t ds_code_size = strlen(code) + 1;
+
+    if(ds_code_size != 6)
+    {
+        fprintf(stderr, "DataSource code must be at most 5 chars length\n");
+        exit(EXIT_FAILURE);
+    }
+
     DataSource *ds = (DataSource *)calloc(1, sizeof(DataSource));
     check_allocation(ds, type);
     
+    strncpy(ds->ds_code, code, DS_CODE);
+    ds->ds_code[ds_code_size] = '\0';
     ds->head = NULL;
     ds->tail = NULL;
     ds->size = 0;
@@ -108,9 +123,12 @@ void init_datasource(DataSource **datasource, PipelineType type)
 
 int main(void)
 {
-    DataSource *ds = NULL;
-    init_datasource(&ds, DS);
-    printf("DataSource Allocated at address %p\n", ds);
+    DataSource *snowflake = NULL;
+    DataSource *anaplan = NULL;
+    init_datasource(&snowflake, DS, "SNOWF");
+    init_datasource(&anaplan, DS, "ANAPL");
+    printf("DataSource %s Allocated at address %p\n", snowflake->ds_code, snowflake);
+    printf("DataSource %s Allocated at address %p\n", anaplan->ds_code, anaplan);
 
     return 0;
 }
