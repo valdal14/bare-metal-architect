@@ -16,6 +16,28 @@ static const char *const DB_VIEWS[VIEWS_COUNT] = {
     "logs_view"
 };
 
+typedef struct Data 
+{
+    // 17 + 7 paddings = 24 bytes 
+    struct Data *next;
+    char *view;
+    uint8_t index;
+} Data;
+
+typedef struct
+{
+    struct Data *head;
+    struct Data *tail;
+} List;
+
+typedef struct 
+{
+    // 
+    struct List **list;
+    uint8_t capacity;
+    uint8_t size;
+} Producer;
+
 /**
  * @brief Hashes a string key into a valid array index.
  * @param key The string to hash.
@@ -34,9 +56,9 @@ uint8_t hash_function(const char *key) {
 }
 
 /**
- * @brief The purpose of this function is to quicly validate 
- * if a given view's name key is found in the DB_VIEWS. It does
- * it by hashing the key and check whether the view is present.
+ * @brief The purpose of this function is to  validate if a given  
+ * view's name (key) is found in the DB_VIEWS. It does it by 
+ * hashing the key and checking whether the view is present.
  * If it is, returns true. if there is a collision it will 
  * perform a O(n) runtime search and scan the entire DB_VIEWS
  * looking for it. If it is found returns true otherwise the 
