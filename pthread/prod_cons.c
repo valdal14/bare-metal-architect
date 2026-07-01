@@ -24,7 +24,7 @@ typedef struct Data
     uint8_t index;
 } Data;
 
-typedef struct
+typedef struct List
 {
     struct Data *head;
     struct Data *tail;
@@ -32,7 +32,7 @@ typedef struct
 
 typedef struct 
 {
-    // 
+    // 10 + 6 paddings = 16 bytes  
     struct List **list;
     uint8_t capacity;
     uint8_t size;
@@ -85,8 +85,40 @@ bool verify_view_by(const char *key)
     return false;
 }
 
+/**
+ * @brief Inits the Producer 
+ * @param Producer producer double pointer 
+ * @return void
+ */
+void init_producer(Producer **producer)
+{
+    Producer *p = (Producer *)calloc(1, sizeof(Producer *));
+    
+    if(p == NULL) 
+    {
+        fprintf(stderr, "Could not allocated space for the Producer\n");
+        exit(EXIT_FAILURE);
+    }
+
+    p->list = (List **)calloc(VIEWS_COUNT, sizeof(List *));
+
+    if(p->list == NULL)
+    {
+        fprintf(stderr, "Could not allocated space for the Producer's List\n");
+        exit(EXIT_FAILURE);
+    }
+
+    p->capacity = VIEWS_COUNT;
+    p->size = 0;
+
+    *producer = p;
+}
+
 int main(void)
 {
+    Producer *producer = NULL;
+    init_producer(&producer);
+    printf("Producer allocated at address %p\n", producer);
     bool is_valid = verify_view_by("logs_view");
     is_valid == true ? printf("found it\n") : printf("Not found\n");
     return 0;
