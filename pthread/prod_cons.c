@@ -5,17 +5,16 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <semaphore.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 #define VIEWS_COUNT 4
 
 // Concurrency Primitives
-pthread_cond_t is_added = PTHREAD_COND_INITIALIZER;
-pthread_cond_t is_processed = PTHREAD_COND_INITIALIZER;
-pthread_cond_t is_empty = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-bool wait_for_add = true;
-bool wait_for_process = true;
-/* File-scoped static array. Kept private to this file. */
+sem_t *items_in_queue;
+// File-scoped static array
 static const char *const DB_VIEWS[VIEWS_COUNT] = {
     "users_view",
     "orders_view",
@@ -103,7 +102,7 @@ bool verify_view(const char *key)
  */
 void init_processor(Processor **processor)
 {
-    Processor *p = (Processor *)calloc(1, sizeof(Processor *));
+    Processor *p = (Processor *)calloc(1, sizeof(Processor));
     
     if(p == NULL) 
     {
@@ -154,137 +153,70 @@ void init_processor(Processor **processor)
  */
 void add_view(Processor *processor, const char *view_name, bool(*verify)(const char *view_name))
 {
-    
-    uint8_t is_valid = verify(view_name);
-    
-    if(is_valid == false)
+    if(!verify(view_name))
     {
         fprintf(stderr, "ERROR: %s is not a valid view\n", view_name);
-        fprintf(stderr, "%s will not be processed\n", view_name);
         return;
     }
     
-    // allocate space for the data 
     Data *data = (Data *)malloc(sizeof(Data));
-    
-    if(data == NULL)
-    {
-        fprintf(stderr, "Could not allocate space for the view %s\n", view_name);
-        fprintf(stderr, "%s will not be processed\n", view_name);
-        return;
-    }
-
-    // copy the verified view_name
     size_t view_length = (strlen(view_name) + 1);
-    data->view = (char *)malloc(sizeof(char) * view_length);
+    data->view = (char *)malloc(view_length);
     strncpy(data->view, view_name, view_length);
-    data->view[view_length] = '\0';
-    
     data->next = NULL;
-    uint8_t list_idx = hash_function(data->view);
 
-    if(processor->list[list_idx]->head == NULL)
+    uint8_t list_idx = hash_function(data->view);
+    List *list = processor->list[list_idx];
+
+    pthread_mutex_lock(&lock);
+    
+    if(list->head == NULL)
     {
-        processor->list[list_idx]->head = data;
-        processor->list[list_idx]->tail = data;
+        list->head = data;
+        list->tail = data;
     }
     else
     {
-
-        while(wait_for_process) pthread_cond_wait(&is_processed, &lock);
-        
-        List *list = processor->list[list_idx];
         list->tail->next = data;
         list->tail = data;
     }
-
+    
     processor->size += 1; 
-    wait_for_add = false;
-    pthread_cond_signal(&is_added);
+    pthread_mutex_unlock(&lock);
+
+    // SEMAPHORE
+    sem_post(items_in_queue);
 }
 
 /**
  * @brief Consumes a view from the processor list 
  * @param Processor processor pointer
- * @param const char view_name pointer
  * @return void
  */
-void consume_view(Processor *processor, const char *view_name)
+void consume_any(Processor *processor)
 {
-    List **list = processor->list;
-    uint8_t index = hash_function(view_name);
-    
-    if(list[index] == NULL)
-    {
-        fprintf(stderr, "Could not find any view named %s in the processing list\n", view_name);
-        return;
-    }
-
-    Data *head = list[index]->head;
-    Data *tail = list[index]->tail;
-
-    if((strcmp(head->view, view_name) == 0) || (strcmp(tail->view, view_name) == 0))
-    {
-        processor->size -= 1;
-        if(processor->size == 0) pthread_cond_signal(&is_empty);
-    }
-    else
-    {
-        while(head == NULL)
-        {
-            if(strcmp(head->view, view_name) == 0)
-            {
-                processor->size -= 1;
-                if(processor->size == 0) pthread_cond_signal(&is_empty);
-                return;
-            }
-
-            head = head->next;
-        }
-    }
-
-    wait_for_process = false;
-    pthread_cond_signal(&is_processed);
-}
-
-
-/**
- * @brief Cleans up the Processor once the processing of the views has 
- * been completed.
- * @param void arg pointer
- * @return void pointer
- */
-void *end_process(void *arg)
-{
-    Processor *processor = (Processor *)arg;
-    if(processor == NULL) return NULL;
-
-    pthread_mutex_lock(&lock);
-   
-    // wait to clean up until all views have been processed
-    while(processor->size != 0) pthread_cond_wait(&is_empty, &lock);
-     
     for(uint8_t i = 0; i < VIEWS_COUNT; i++)
     {
-        Data *current = processor->list[i]->head;
-        Data *next_node = NULL;
-
-        while(current != NULL)
+        List *list = processor->list[i];
+        
+        if(list->head != NULL)
         {
-            next_node = current->next;
+            Data *current = list->head;
+            
+            // Unlink the node
+            list->head = current->next;
+            if(list->head == NULL) list->tail = NULL;
+            
+            processor->size -= 1;
+            
+            // Free the node
+            printf("\t[Consumer] Processed and freed view: %s\n", current->view);
             free(current->view);
             free(current);
-            current = next_node;
+            
+            return;
         }
     }
-
-    free(processor->list);
-    free(processor);
-    processor = NULL;
-
-    pthread_mutex_unlock(&lock);
-
-    return NULL;
 }
 
 /**
@@ -296,76 +228,104 @@ void *end_process(void *arg)
 void *producer_request(void *arg)
 {
     ProcessingRequest *request = (ProcessingRequest *)arg;
-    if(request == NULL) return NULL;
-    pthread_mutex_lock(&lock);
-    // internally calls the add_view to add the new view to the processor list 
     add_view(request->processor, request->view, verify_view);
+    return NULL;
+}
+
+/**
+ * @brief Callback executed from a thread that internally calls
+ * the consume_any method.
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *consumer_process(void *arg)
+{
+    Processor *processor = (Processor *)arg;
+    
+    // SEMAPHORE: Wait for a token. If 0, sleep. If > 0, instantly subtract 1 and proceed!
+    sem_wait(items_in_queue);
+    // MUTEX: We have a token, now safely lock the data structure to take our item.
+    pthread_mutex_lock(&lock);
+    consume_any(processor);
     pthread_mutex_unlock(&lock);
 
     return NULL;
 }
 
-void *consumer_process(void *arg)
+/**
+ * @brief Cleans up the Processor once the processing of the views has 
+ * been completed.
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *end_process(void *arg)
 {
-    ProcessingRequest *request = (ProcessingRequest *)arg;
-    if(request == NULL) return NULL;
-    pthread_mutex_lock(&lock);
+    Processor *processor = (Processor *)arg;
     
-    while(wait_for_add)
+    // Because main() joins all threads, No waiting needed!
+    for(uint8_t i = 0; i < VIEWS_COUNT; i++)
     {
-        pthread_cond_wait(&is_added, &lock);
+        free(processor->list[i]);
     }
+    
+    free(processor->list);
+    free(processor);
 
-    consume_view(request->processor, request->view);
-    if(request->processor->size == 0) pthread_cond_signal(&is_empty);
-    pthread_mutex_unlock(&lock);
-
+    processor = NULL;
     return NULL;
 }
 
 int main(void)
 {
-    pthread_t clean, add, execute;
+    // Initialize the Semaphore to 0 tokens
+    sem_unlink("/items_queue"); 
+    items_in_queue = sem_open("/items_queue", O_CREAT, 0644, 0);
+    
+    if (items_in_queue == SEM_FAILED) 
+    {
+        fprintf(stderr, "Failed to initialize semaphore\n");
+        exit(EXIT_FAILURE);
+    }
+    
     Processor *processor = NULL;
     init_processor(&processor);
 
-    // ProcessingRequest (Simulating upcoming requests)
     ProcessingRequest requests[VIEWS_COUNT];
-    ProcessingRequest r1, r2, r3, r4;
-    r1.processor = processor;
-    r1.view = "logs_view";
-    r2.processor = processor;
-    r2.view = "inventory_view"; 
-    r3.processor = processor;
-    r3.view = "orders_view";
-    r4.processor = processor;
-    r4.view = "users_view";
-    requests[0] = r1;
-    requests[1] = r2;
-    requests[2] = r3;
-    requests[3] = r4;
+    requests[0] = (ProcessingRequest){processor, "logs_view"};
+    requests[1] = (ProcessingRequest){processor, "inventory_view"}; 
+    requests[2] = (ProcessingRequest){processor, "orders_view"};
+    requests[3] = (ProcessingRequest){processor, "users_view"};
+
+    // Thread Arrays
+    pthread_t add_threads[VIEWS_COUNT];
+    pthread_t execute_threads[VIEWS_COUNT];
 
     for(uint8_t i = 0; i < VIEWS_COUNT; i++)
     {
-
-        printf("Adding the new view named %s\n", requests[i].view);
+        printf("[Main] Spawning Producer for %s\n", requests[i].view); 
         sleep(1);
-        pthread_create(&add, NULL, producer_request, (void *)&requests[i]);
-        printf("%s added to the list of the processing view\n", requests[i].view);
-        printf("--------------------------------------------------------------\n");
-        printf("Processing the view %s, please wait..\n", requests[i].view); 
+        pthread_create(&add_threads[i], NULL, producer_request, (void *)&requests[i]);
+        
+        printf("[Main] Spawning generic Consumer worker...\n"); 
         sleep(2);
-        pthread_create(&execute, NULL, consumer_process, (void *)&requests[i]);
-        printf("%s processing completed\n", requests[i].view);
-        printf("--------------------------------------------------------------\n");
+        pthread_create(&execute_threads[i], NULL, consumer_process, (void *)processor);
     }
     
-    printf("\nProcessor Completed. The Processor will be cleaned\n");
+    // Join all threads safely
+    for(uint8_t i = 0; i < VIEWS_COUNT; i++)
+    {
+        pthread_join(add_threads[i], NULL);
+        pthread_join(execute_threads[i], NULL);
+    }
+    
+    printf("\nAll processing complete. Cleaning up Data Structures...\n");
+    
+    pthread_t clean;
     pthread_create(&clean, NULL, end_process, (void *)processor);
-
-    pthread_join(add, NULL);
-    pthread_join(execute, NULL);
     pthread_join(clean, NULL);
 
+    // Destroy the semaphore to return memory to the OS
+    sem_close(items_in_queue);
+    sem_unlink("/items_queue");
     return 0;
 }
