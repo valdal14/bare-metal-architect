@@ -9,6 +9,8 @@
 #define VIEWS_COUNT 4
 
 // Concurrency Primitives
+pthread_cond_t is_added = PTHREAD_COND_INITIALIZER;
+pthread_cond_t is_empty = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t views_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* File-scoped static array. Kept private to this file. */
@@ -38,7 +40,7 @@ typedef struct
     struct List **list;
     uint8_t capacity;
     uint8_t size;
-} Producer;
+} Processor;
 
 /**
  * @brief Hashes a string key into a valid array index.
@@ -87,17 +89,17 @@ bool verify_view(const char *key)
 }
 
 /**
- * @brief Inits the Producer 
- * @param Producer producer double pointer 
+ * @brief Inits the Processor
+ * @param Processor processor double pointer 
  * @return void
  */
-void init_producer(Producer **producer)
+void init_processor(Processor **processor)
 {
-    Producer *p = (Producer *)calloc(1, sizeof(Producer *));
+    Processor *p = (Processor *)calloc(1, sizeof(Processor *));
     
     if(p == NULL) 
     {
-        fprintf(stderr, "Could not allocate space for the Producer\n");
+        fprintf(stderr, "Could not allocate space for the Processor\n");
         exit(EXIT_FAILURE);
     }
 
@@ -105,7 +107,7 @@ void init_producer(Producer **producer)
 
     if(p->list == NULL)
     {
-        fprintf(stderr, "Could not allocate space for the Producer's List\n");
+        fprintf(stderr, "Could not allocate space for the Processor's List\n");
         exit(EXIT_FAILURE);
     }
 
@@ -128,7 +130,7 @@ void init_producer(Producer **producer)
     p->capacity = VIEWS_COUNT;
     p->size = 0;
 
-    *producer = p;
+    *processor = p;
 }
 
 /**
@@ -137,12 +139,12 @@ void init_producer(Producer **producer)
  * evaluate whether the given view's name is in the list of the 
  * supported views. 
  *
- * @param Producer producer pointer
+ * @param Processor processor pointer
  * @param const char view_name pointer. The view's name 
  * @param bool(*verify)(const char *view_name). The verify callback
  * @return void
  */
-void add_view(Producer *producer, const char *view_name, bool(*verify)(const char *view_name))
+void add_view(Processor *processor, const char *view_name, bool(*verify)(const char *view_name))
 {
     uint8_t is_valid = verify(view_name);
     
@@ -172,32 +174,32 @@ void add_view(Producer *producer, const char *view_name, bool(*verify)(const cha
     data->next = NULL;
     uint8_t list_idx = hash_function(data->view);
 
-    if(producer->list[list_idx]->head == NULL)
+    if(processor->list[list_idx]->head == NULL)
     {
-        producer->list[list_idx]->head = data;
-        producer->list[list_idx]->tail = data;
+        processor->list[list_idx]->head = data;
+        processor->list[list_idx]->tail = data;
     }
     else
     {
-        List *list = producer->list[list_idx];
+        List *list = processor->list[list_idx];
         list->tail->next = data;
         list->tail = data;
     }
+
+    processor->size += 1; 
 }
 
 int main(void)
 {
-    Producer *producer = NULL;
-    init_producer(&producer);
-    printf("Producer allocated at address %p\n", producer);
-    add_view(producer, "logs_view", verify_view); 
-    add_view(producer, "inventory_view", verify_view); 
-    add_view(producer, "orders_view", verify_view); 
-    add_view(producer, "users_view", verify_view); 
+    Processor *processor = NULL;
+    init_processor(&processor);
+    add_view(processor, "logs_view", verify_view); 
+    add_view(processor, "inventory_view", verify_view); 
+    add_view(processor, "orders_view", verify_view); 
+    add_view(processor, "users_view", verify_view); 
     
-    printf("%s\n", producer->list[0]->head->view);
-    printf("%s\n", producer->list[0]->tail->view);
-
-    
+    printf("%s\n", processor->list[0]->head->view);
+    printf("%s\n", processor->list[0]->tail->view);
+ 
     return 0;
 }
