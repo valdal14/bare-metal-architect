@@ -10,9 +10,11 @@
 
 // Concurrency Primitives
 pthread_cond_t is_added = PTHREAD_COND_INITIALIZER;
+pthread_cond_t is_processed = PTHREAD_COND_INITIALIZER;
 pthread_cond_t is_empty = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
+bool wait_for_add = true;
+bool wait_for_process = true;
 /* File-scoped static array. Kept private to this file. */
 static const char *const DB_VIEWS[VIEWS_COUNT] = {
     "users_view",
@@ -34,13 +36,19 @@ typedef struct List
     struct Data *tail;
 } List;
 
-typedef struct 
+typedef struct Processor 
 {
     // 10 + 6 paddings = 16 bytes  
     struct List **list;
     uint8_t capacity;
     uint8_t size;
 } Processor;
+
+typedef struct 
+{
+    struct Processor *processor;
+    char *view;
+} ProcessingRequest;
 
 /**
  * @brief Hashes a string key into a valid array index.
@@ -111,7 +119,7 @@ void init_processor(Processor **processor)
         exit(EXIT_FAILURE);
     }
 
-    for(int i = 0; i < VIEWS_COUNT; i++)
+    for(uint8_t i = 0; i < VIEWS_COUNT; i++)
     {
         List *new_list = (List *)malloc(sizeof(List));
         new_list->head = NULL;
@@ -146,6 +154,7 @@ void init_processor(Processor **processor)
  */
 void add_view(Processor *processor, const char *view_name, bool(*verify)(const char *view_name))
 {
+    
     uint8_t is_valid = verify(view_name);
     
     if(is_valid == false)
@@ -181,13 +190,63 @@ void add_view(Processor *processor, const char *view_name, bool(*verify)(const c
     }
     else
     {
+
+        while(wait_for_process) pthread_cond_wait(&is_processed, &lock);
+        
         List *list = processor->list[list_idx];
         list->tail->next = data;
         list->tail = data;
     }
 
     processor->size += 1; 
+    wait_for_add = false;
+    pthread_cond_signal(&is_added);
 }
+
+/**
+ * @brief Consumes a view from the processor list 
+ * @param Processor processor pointer
+ * @param const char view_name pointer
+ * @return void
+ */
+void consume_view(Processor *processor, const char *view_name)
+{
+    List **list = processor->list;
+    uint8_t index = hash_function(view_name);
+    
+    if(list[index] == NULL)
+    {
+        fprintf(stderr, "Could not find any view named %s in the processing list\n", view_name);
+        return;
+    }
+
+    Data *head = list[index]->head;
+    Data *tail = list[index]->tail;
+
+    if((strcmp(head->view, view_name) == 0) || (strcmp(tail->view, view_name) == 0))
+    {
+        processor->size -= 1;
+        if(processor->size == 0) pthread_cond_signal(&is_empty);
+    }
+    else
+    {
+        while(head == NULL)
+        {
+            if(strcmp(head->view, view_name) == 0)
+            {
+                processor->size -= 1;
+                if(processor->size == 0) pthread_cond_signal(&is_empty);
+                return;
+            }
+
+            head = head->next;
+        }
+    }
+
+    wait_for_process = false;
+    pthread_cond_signal(&is_processed);
+}
+
 
 /**
  * @brief Cleans up the Processor once the processing of the views has 
@@ -201,10 +260,11 @@ void *end_process(void *arg)
     if(processor == NULL) return NULL;
 
     pthread_mutex_lock(&lock);
-    
+   
+    // wait to clean up until all views have been processed
     while(processor->size != 0) pthread_cond_wait(&is_empty, &lock);
-    
-    for(int i = 0; i < VIEWS_COUNT; i++)
+     
+    for(uint8_t i = 0; i < VIEWS_COUNT; i++)
     {
         Data *current = processor->list[i]->head;
         Data *next_node = NULL;
@@ -227,21 +287,84 @@ void *end_process(void *arg)
     return NULL;
 }
 
+/**
+ * @brief Callback executed from a thread that internally calls
+ * the add_view method.
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *producer_request(void *arg)
+{
+    ProcessingRequest *request = (ProcessingRequest *)arg;
+    if(request == NULL) return NULL;
+    pthread_mutex_lock(&lock);
+    // internally calls the add_view to add the new view to the processor list 
+    add_view(request->processor, request->view, verify_view);
+    pthread_mutex_unlock(&lock);
+
+    return NULL;
+}
+
+void *consumer_process(void *arg)
+{
+    ProcessingRequest *request = (ProcessingRequest *)arg;
+    if(request == NULL) return NULL;
+    pthread_mutex_lock(&lock);
+    
+    while(wait_for_add)
+    {
+        pthread_cond_wait(&is_added, &lock);
+    }
+
+    consume_view(request->processor, request->view);
+    if(request->processor->size == 0) pthread_cond_signal(&is_empty);
+    pthread_mutex_unlock(&lock);
+
+    return NULL;
+}
+
 int main(void)
 {
-    pthread_t clean;
-
+    pthread_t clean, add, execute;
     Processor *processor = NULL;
     init_processor(&processor);
-    add_view(processor, "logs_view", verify_view); 
-    add_view(processor, "inventory_view", verify_view); 
-    add_view(processor, "orders_view", verify_view); 
-    add_view(processor, "users_view", verify_view); 
+
+    // ProcessingRequest (Simulating upcoming requests)
+    ProcessingRequest requests[VIEWS_COUNT];
+    ProcessingRequest r1, r2, r3, r4;
+    r1.processor = processor;
+    r1.view = "logs_view";
+    r2.processor = processor;
+    r2.view = "inventory_view"; 
+    r3.processor = processor;
+    r3.view = "orders_view";
+    r4.processor = processor;
+    r4.view = "users_view";
+    requests[0] = r1;
+    requests[1] = r2;
+    requests[2] = r3;
+    requests[3] = r4;
+
+    for(uint8_t i = 0; i < VIEWS_COUNT; i++)
+    {
+
+        printf("Adding the new view named %s\n", requests[i].view);
+        sleep(1);
+        pthread_create(&add, NULL, producer_request, (void *)&requests[i]);
+        printf("%s added to the list of the processing view\n", requests[i].view);
+        printf("--------------------------------------------------------------\n");
+        printf("Processing the view %s, please wait..\n", requests[i].view); 
+        sleep(2);
+        pthread_create(&execute, NULL, consumer_process, (void *)&requests[i]);
+        printf("%s processing completed\n", requests[i].view);
+        printf("--------------------------------------------------------------\n");
+    }
     
-    printf("%s\n", processor->list[0]->head->view);
-    printf("%s\n", processor->list[0]->tail->view);
- 
+    printf("\nProcessor Completed. The Processor will be cleaned\n");
     pthread_create(&clean, NULL, end_process, (void *)processor);
+
+    pthread_join(add, NULL);
+    pthread_join(execute, NULL);
     pthread_join(clean, NULL);
 
     return 0;
