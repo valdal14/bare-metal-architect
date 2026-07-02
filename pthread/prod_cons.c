@@ -11,7 +11,7 @@
 // Concurrency Primitives
 pthread_cond_t is_added = PTHREAD_COND_INITIALIZER;
 pthread_cond_t is_empty = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t views_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* File-scoped static array. Kept private to this file. */
 static const char *const DB_VIEWS[VIEWS_COUNT] = {
@@ -189,8 +189,48 @@ void add_view(Processor *processor, const char *view_name, bool(*verify)(const c
     processor->size += 1; 
 }
 
+/**
+ * @brief Cleans up the Processor once the processing of the views has 
+ * been completed.
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *end_process(void *arg)
+{
+    Processor *processor = (Processor *)arg;
+    if(processor == NULL) return NULL;
+
+    pthread_mutex_lock(&lock);
+    
+    while(processor->size != 0) pthread_cond_wait(&is_empty, &lock);
+    
+    for(int i = 0; i < VIEWS_COUNT; i++)
+    {
+        Data *current = processor->list[i]->head;
+        Data *next_node = NULL;
+
+        while(current != NULL)
+        {
+            next_node = current->next;
+            free(current->view);
+            free(current);
+            current = next_node;
+        }
+    }
+
+    free(processor->list);
+    free(processor);
+    processor = NULL;
+
+    pthread_mutex_unlock(&lock);
+
+    return NULL;
+}
+
 int main(void)
 {
+    pthread_t clean;
+
     Processor *processor = NULL;
     init_processor(&processor);
     add_view(processor, "logs_view", verify_view); 
@@ -201,5 +241,8 @@ int main(void)
     printf("%s\n", processor->list[0]->head->view);
     printf("%s\n", processor->list[0]->tail->view);
  
+    pthread_create(&clean, NULL, end_process, (void *)processor);
+    pthread_join(clean, NULL);
+
     return 0;
 }
