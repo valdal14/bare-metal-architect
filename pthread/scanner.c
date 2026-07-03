@@ -5,9 +5,7 @@
 
 // Concurrency Primitives
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t is_powered = PTHREAD_COND_INITIALIZER;
-pthread_cond_t is_locked = PTHREAD_COND_INITIALIZER;
-
+pthread_cond_t state_changed = PTHREAD_COND_INITIALIZER;
 // Macros 
 #define TOGGLE(x) (1 << (x))
 #define DEFAULT_MASK 0x00
@@ -70,7 +68,7 @@ void *set_power(void *arg)
     scanner->flags |= TOGGLE(POWER_BIT);
     printf("Scanner is power on at level: %d\n", scanner->power_level);
     // send the signal of the power on
-    pthread_cond_signal(&is_powered);
+    pthread_cond_signal(&state_changed);
     pthread_mutex_unlock(&lock);
     return scanner;
 }
@@ -87,13 +85,13 @@ void *set_frequency(void *arg)
     sleep(3);
     pthread_mutex_lock(&lock);
     // wait until the scanner is powered on 
-    while((scanner->flags & TOGGLE(POWER_BIT)) == 0) pthread_cond_wait(&is_powered, &lock);
+    while((scanner->flags & TOGGLE(POWER_BIT)) == 0) pthread_cond_wait(&state_changed, &lock);
     scanner->frequency_locked = 1;
     // toggle the bit frequency on 
     scanner->flags |= TOGGLE(FREQU_BIT);
     printf("Scanner's frequency is locked at: %d\n", scanner->frequency_locked);
     // send the signal of the frequency lock
-    pthread_cond_signal(&is_locked);
+    pthread_cond_signal(&state_changed);
     pthread_mutex_unlock(&lock);
     return scanner;
 }
@@ -108,10 +106,9 @@ void *read_value(void *arg)
     sleep(1);
     pthread_mutex_lock(&lock);
     // wait until the scanner is both power and frequency are on 
-    while((scanner->flags & READ_MASK) == 0) pthread_cond_wait(&is_locked, &lock);
+    while((scanner->flags & READ_MASK) != READ_MASK) pthread_cond_wait(&state_changed, &lock);
     printf("Scanner power: %d - Scanner frequency: %d\n", scanner->power_level, scanner->frequency_locked);
     pthread_mutex_unlock(&lock);
     return scanner;
-
 }
 
