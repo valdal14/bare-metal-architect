@@ -77,6 +77,57 @@ void init_threadpool(threadpool_t **tp, uint8_t thread_count, uint8_t queue_size
     *tp = threadpool;
 }
 
+/**
+ * @brief POSIX Threads callback 
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *worker_loop(void *arg)
+{
+    threadpool_t *pool = (threadpool_t *)arg;
+    
+    if(pool == NULL)
+    {
+        fprintf(stderr, "ERROR: Could not cast the value to a task_t\n");
+        exit(EXIT_FAILURE);
+    }
+
+    while(true)
+    {
+        pthread_mutex_lock(&pool->lock);
+        
+        while(pool->count == 0 && !pool->shutdown)
+        {
+            pthread_cond_wait(&pool->notify, &pool->lock);
+        }
+
+        // Shutdown check
+        if(pool->shutdown && pool->count == 0)
+        {
+            pthread_mutex_unlock(&pool->lock);
+            // Exit the while loop and kill the thread
+            break; 
+        }
+
+        // Grab the task
+        task_t task = pool->queue[pool->head];
+        // Update the Ring Buffer
+        pool->head = (pool->head + 1) % pool->queue_size;
+
+        // Decrement the pending task count
+        pool->count--;
+
+        // Unlock the lock 
+        pthread_mutex_unlock(&pool->lock);
+
+        // Execute the function
+        if(task.function != NULL) task.function(task.argument);
+
+    }
+
+    return NULL;
+}
+
 int main(void)
 {
     threadpool_t *threadpool = NULL;
