@@ -128,6 +128,40 @@ void *worker_loop(void *arg)
     return NULL;
 }
 
+/**
+ * @brief Submits a new task to the thread pool queue
+ * @param pool Pointer to the threadpool engine
+ * @param function The polymorphic function to execute
+ * @param argument The payload/data to pass to the function
+ * @return bool True if accepted, False if the queue is full (HTTP 429)
+ */
+bool submit_task(threadpool_t *pool, void (*function)(void *), void *argument)
+{
+    pthread_mutex_lock(&pool->lock);
+    
+    // Check if the queue if full
+    if(pool->count == pool->queue_size)
+    {
+        // if so, unlock and return false
+        pthread_mutex_unlock(&pool->lock);
+        return false;
+    }
+
+    // Insert the payload directly into the heap memory of the array
+    pool->queue[pool->tail].function = function;
+    pool->queue[pool->tail].argument = argument;
+    // Update the Ring Buffer
+    pool->tail = (pool->tail + 1) % pool->queue_size;
+    // Increment the task count 
+    pool->count += 1;
+    // Send the signal 
+    pthread_cond_signal(&pool->notify);
+    // Unlock the lock
+    pthread_mutex_unlock(&pool->lock);
+
+    return true;
+}
+
 int main(void)
 {
     threadpool_t *threadpool = NULL;
