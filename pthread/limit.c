@@ -18,5 +18,4 @@ int main(void)
         printf("value = %d | limit = %.2f\n", i, res);
         usleep(100000);
     }
-
 }
