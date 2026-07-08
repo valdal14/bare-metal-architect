@@ -6,10 +6,14 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#define MAX_QUEUE_SIZE 5
+#define MAX_THREAD_SIZE 10
+
 typedef enum
 {
     ThreadPool,
-    Task
+    Task,
+    Thread
 } T_Type;
 
 typedef struct
@@ -57,6 +61,13 @@ void check_resource_alloc(void *obj, T_Type type)
                 exit(EXIT_FAILURE);
             }
             break;
+        case Thread:
+            if((pthread_t *)obj == NULL)
+            {
+                fprintf(stderr, "Could not cast the given object to a pthread_t resource\n");
+                exit(EXIT_FAILURE);
+            }
+            break;
         default:
             fprintf(stderr, "Unsupported Type\n");
             exit(EXIT_FAILURE);
@@ -66,13 +77,25 @@ void check_resource_alloc(void *obj, T_Type type)
 /**
  * @brief Inits the Thread Pool
  * @param threadpool_t tp double pointer
- * @param uint8_t queue_size
  * @return void
  */
-void init_threadpool(threadpool_t **tp, uint8_t queue_size)
+void init_threadpool(threadpool_t **tp)
 {
     threadpool_t *threadpool = (threadpool_t *)calloc(1, sizeof(threadpool_t));
     check_resource_alloc(threadpool, ThreadPool);
+
+    threadpool->queue = (task_t *)calloc(MAX_QUEUE_SIZE, sizeof(task_t));
+    check_resource_alloc(threadpool->queue, Task);
+
+    threadpool->threads = (pthread_t *)calloc(MAX_THREAD_SIZE, sizeof(pthread_t));
+    check_resource_alloc(threadpool->threads, Thread);
+
+    threadpool->queue_size = 0;
+    threadpool->thread_count = 0;
+    threadpool->head = 0;
+    threadpool->tail = 0;
+    threadpool->count = 0;
+    threadpool->shutdown = false;
 
     *tp = threadpool;
 }
@@ -80,7 +103,7 @@ void init_threadpool(threadpool_t **tp, uint8_t queue_size)
 int main(void)
 {
     threadpool_t *tp = NULL;
-    init_threadpool(&tp, 5);
+    init_threadpool(&tp);
     printf("threadpool_t allocated at address %p\n", tp);
     return 0;
 }
