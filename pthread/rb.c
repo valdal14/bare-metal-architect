@@ -138,6 +138,39 @@ void *execute_task(void *arg)
     return NULL;
 }
 
+/**
+ * @brief Submits a new task to the thread pool queue
+ * @param tp Pointer to the threadpool engine
+ * @param function The polymorphic function to execute
+ * @param arguments The payload/data to pass to the function
+ * @return bool True if accepted, False if the queue is full (HTTP 429)
+ */
+bool submit_task(threadpool_t *tp, void (*function)(void *), void *arguments)
+{
+    pthread_mutex_lock(&tp->lock);
+
+    // Check if the queue if full
+    if(tp->count == MAX_QUEUE_SIZE)
+    {
+        pthread_mutex_unlock(&tp->lock);
+        return false;
+    }
+
+    // Insert the payload directly into the heap memory of the array
+    tp->queue[tp->tail].function = function;
+    tp->queue[tp->tail].arguments = arguments;
+    
+    tp->tail = (tp->tail + 1) % MAX_QUEUE_SIZE;
+    
+    tp->count += 1;
+    
+    pthread_cond_signal(&tp->notify);
+    
+    pthread_mutex_unlock(&tp->lock);
+
+    return true;
+}
+
 int main(void)
 {
     threadpool_t *tp = NULL;
