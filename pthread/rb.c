@@ -90,14 +90,52 @@ void init_threadpool(threadpool_t **tp)
     threadpool->threads = (pthread_t *)calloc(MAX_THREAD_SIZE, sizeof(pthread_t));
     check_resource_alloc(threadpool->threads, Thread);
 
-    threadpool->queue_size = 0;
-    threadpool->thread_count = 0;
+    threadpool->queue_size = MAX_QUEUE_SIZE;
+    threadpool->thread_count = MAX_THREAD_SIZE;
     threadpool->head = 0;
     threadpool->tail = 0;
     threadpool->count = 0;
     threadpool->shutdown = false;
 
     *tp = threadpool;
+}
+
+/**
+ * @brief POSIX thread callbacks used to executes a task 
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *execute_task(void *arg)
+{
+    threadpool_t *tp = (threadpool_t *)arg;
+    check_resource_alloc(tp, ThreadPool);
+    
+    while(true)
+    {
+        pthread_mutex_lock(&tp->lock);
+
+        while(tp->count == 0 && !tp->shutdown)
+        {
+            pthread_cond_wait(&tp->notify, &tp->lock);
+        }
+
+        if(tp->shutdown && tp->count == 0)
+        {
+            pthread_mutex_unlock(&tp->lock);
+            break;
+        }
+
+        task_t task = tp->queue[tp->head];
+        tp->head = (tp->head + 1) % MAX_QUEUE_SIZE;
+
+        tp->count -= 1;
+
+        pthread_mutex_unlock(&tp->lock);
+
+        if(task.function != NULL) task.function(task.arguments);
+    }
+
+    return NULL;
 }
 
 int main(void)
