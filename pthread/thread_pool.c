@@ -5,14 +5,21 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-// The Polymorphic Task Interface
+/**
+ * @brief The Polymorphic Task Interface.
+ * Defines a generic function pointer and its argument payload.
+ */
 typedef struct
 {
     void (*function)(void *);
     void *argument;
 } task_t;
 
-// The Thread Pool Engine
+/**
+ * @brief The Thread Pool Engine struct.
+ * Holds the POSIX concurrency primitives, the ring buffer queue,
+ * and the worker thread array.
+ */
 typedef struct {
     pthread_mutex_t lock;
     pthread_cond_t notify;
@@ -27,146 +34,179 @@ typedef struct {
 } threadpool_t;
 
 /**
- * @brief Initializes the Thread Pool Engine
- * * Allocates memory for the thread pool structure, the worker threads array,
+ * @brief Initializes the Thread Pool Engine.
+ * Allocates memory for the thread pool structure, the worker threads array,
  * and the task queue ring buffer. Initializes the POSIX mutex and condition variable.
- * @param tp Double pointer to the threadpool_t struct to be allocated and populated.
+ * * @param tp Double pointer to the threadpool_t struct to be allocated and populated.
  * @param thread_count The fixed number of worker threads to spawn in the pool.
  * @param queue_size The maximum number of pending tasks the ring buffer can hold.
  * @return void (Exits the process with EXIT_FAILURE if memory allocation fails).
  */
 void init_threadpool(threadpool_t **tp, uint8_t thread_count, uint8_t queue_size)
 {
-    // Allocate space for the Thread Pool Engine
-    threadpool_t *threadpool = (threadpool_t *)calloc(1, sizeof(threadpool_t));
-    if(threadpool == NULL)
-    {
-        fprintf(stderr, "ERROR: Could not allocate space for the threadpool\n");
-        exit(EXIT_FAILURE);
-    }
+    threadpool_t *pool = (threadpool_t *)calloc(1, sizeof(threadpool_t));
+    if(pool == NULL) exit(EXIT_FAILURE);
 
-    // Allocate space for the threads array using the dedicated thread_count
-    threadpool->threads = (pthread_t *)calloc(thread_count, sizeof(pthread_t));
-    if(threadpool->threads == NULL)
-    {
-        fprintf(stderr, "ERROR: Could not allocate space for the threads array\n");
-        exit(EXIT_FAILURE);
-    }
+    pool->threads = (pthread_t *)calloc(thread_count, sizeof(pthread_t));
+    if(pool->threads == NULL) exit(EXIT_FAILURE);
 
-    // Allocate space for the queue ring buffer using the dedicated queue_size
-    threadpool->queue = (task_t *)calloc(queue_size, sizeof(task_t));
-    if(threadpool->queue == NULL)
-    {
-        fprintf(stderr, "ERROR: Could not allocate space for the queue\n");
-        exit(EXIT_FAILURE);
-    }
+    pool->queue = (task_t *)calloc(queue_size, sizeof(task_t));
+    if(pool->queue == NULL) exit(EXIT_FAILURE);
     
-    // Init the mutex and condition variable
-    pthread_mutex_init(&threadpool->lock, NULL);
-    pthread_cond_init(&threadpool->notify, NULL);
+    pthread_mutex_init(&pool->lock, NULL);
+    pthread_cond_init(&pool->notify, NULL);
 
-    // Initialize state
-    threadpool->thread_count = thread_count;
-    threadpool->queue_size = queue_size;
-    threadpool->head = 0;
-    threadpool->tail = 0;
-    threadpool->count = 0;
-    threadpool->shutdown = false;
+    pool->thread_count = thread_count;
+    pool->queue_size = queue_size;
+    pool->head = 0;
+    pool->tail = 0;
+    pool->count = 0;
+    pool->shutdown = false;
 
-    // Mutate the caller's pointer
-    *tp = threadpool;
+    *tp = pool;
 }
 
 /**
- * @brief POSIX Threads callback 
- * @param void arg pointer
- * @return void pointer
+ * @brief The infinite loop executed by every worker thread.
+ * Threads sleep on a condition variable until work is available,
+ * then safely extract a task from the queue and execute it.
+ * * @param arg Pointer to the threadpool_t struct.
+ * @return void* Returns NULL upon thread exit.
  */
 void *worker_loop(void *arg)
 {
     threadpool_t *pool = (threadpool_t *)arg;
     
-    if(pool == NULL)
-    {
-        fprintf(stderr, "ERROR: Could not cast the value to a task_t\n");
-        exit(EXIT_FAILURE);
-    }
+    if(pool == NULL) return NULL;
 
     while(true)
     {
         pthread_mutex_lock(&pool->lock);
         
-        while(pool->count == 0 && !pool->shutdown)
+        while(pool->count == 0 && !pool->shutdown) 
         {
             pthread_cond_wait(&pool->notify, &pool->lock);
         }
-
-        // Shutdown check
-        if(pool->shutdown && pool->count == 0)
+        
+        if(pool->shutdown && pool->count == 0) 
         {
             pthread_mutex_unlock(&pool->lock);
-            // Exit the while loop and kill the thread
-            break; 
+            break;
         }
-
-        // Grab the task
+        
         task_t task = pool->queue[pool->head];
-        // Update the Ring Buffer
         pool->head = (pool->head + 1) % pool->queue_size;
-
-        // Decrement the pending task count
         pool->count--;
-
-        // Unlock the lock 
+        
         pthread_mutex_unlock(&pool->lock);
-
-        // Execute the function
-        if(task.function != NULL) task.function(task.argument);
-
+        
+        if(task.function != NULL) 
+        {
+            task.function(task.argument);
+        }
     }
-
     return NULL;
 }
 
 /**
- * @brief Submits a new task to the thread pool queue
- * @param pool Pointer to the threadpool engine
- * @param function The polymorphic function to execute
- * @param argument The payload/data to pass to the function
- * @return bool True if accepted, False if the queue is full (HTTP 429)
+ * @brief Submits a new task to the thread pool queue.
+ * Locks the queue, inserts the polymorphic function and argument,
+ * advances the tail pointer, and signals a sleeping worker thread.
+ * * @param pool Pointer to the threadpool engine.
+ * @param function The polymorphic function to execute (must return void).
+ * @param argument The payload/data to pass to the function.
+ * @return bool True if accepted, False if the queue is full (HTTP 429).
  */
 bool submit_task(threadpool_t *pool, void (*function)(void *), void *argument)
 {
     pthread_mutex_lock(&pool->lock);
     
-    // Check if the queue if full
     if(pool->count == pool->queue_size)
     {
-        // if so, unlock and return false
         pthread_mutex_unlock(&pool->lock);
         return false;
     }
 
-    // Insert the payload directly into the heap memory of the array
     pool->queue[pool->tail].function = function;
     pool->queue[pool->tail].argument = argument;
-    // Update the Ring Buffer
+    
     pool->tail = (pool->tail + 1) % pool->queue_size;
-    // Increment the task count 
-    pool->count += 1;
-    // Send the signal 
+    pool->count++;
+    
     pthread_cond_signal(&pool->notify);
-    // Unlock the lock
     pthread_mutex_unlock(&pool->lock);
 
     return true;
 }
 
+/**
+ * @brief Example task function to be executed by the thread pool.
+ * Unpacks the void pointer into a uint8_t array and simulates work.
+ * * @param arg Void pointer to the arguments array.
+ * @return void
+ */
+void execute_task(void *arg) 
+{
+    uint8_t *args = (uint8_t *)arg;
+    
+    // Get the pthread ID for logging purposes
+    pthread_t id = pthread_self();
+    
+    printf("[Thread %p] Executing task with args: {%d, %d}...\n", (void*)id, args[0], args[1]);
+    
+    // Simulate a blocking operation (like a DB query or API call)
+    sleep(1); 
+    
+    printf("[Thread %p] Task complete.\n", (void*)id);
+}
+
 int main(void)
 {
-    threadpool_t *threadpool = NULL;
-    // Request 4 worker threads, but a queue capacity of 100
-    init_threadpool(&threadpool, 4, 100);
-    printf("threadpool_t allocated at address %p\n", (void*)threadpool);
+    threadpool_t *tp = NULL;
+    
+    // Create a pool with 2 worker threads and a queue size of 10
+    init_threadpool(&tp, 2, 10);
+    printf("Thread pool initialized.\n");
+
+    // Boot up the worker threads using the pthread API
+    for(int i = 0; i < tp->thread_count; i++) 
+    {
+        pthread_create(&(tp->threads[i]), NULL, worker_loop, (void *)tp);
+    }
+
+    // Prepare some payloads
+    uint8_t payload1[2] = {10, 4};
+    uint8_t payload2[2] = {99, 1};
+    uint8_t payload3[2] = {42, 7};
+    uint8_t payload4[2] = {15, 3};
+
+    // The Main Thread (like an API Gateway) floods the queue
+    printf("Main thread: Submitting 4 tasks...\n");
+    submit_task(tp, execute_task, payload1);
+    submit_task(tp, execute_task, payload2);
+    submit_task(tp, execute_task, payload3);
+    submit_task(tp, execute_task, payload4);
+    
+    printf("Main thread: Tasks submitted. Now waiting for workers to finish...\n");
+
+    // Sleep main thread to give workers time to process the queue
+    // (In a real server, this would be an infinite while(1) loop accepting HTTP requests)
+    sleep(3);
+
+    printf("Main thread: Shutting down system.\n");
+    
+    // Trigger graceful shutdown
+    pthread_mutex_lock(&tp->lock);
+    tp->shutdown = true;
+    pthread_cond_broadcast(&tp->notify); // Wake everyone up to check the shutdown flag
+    pthread_mutex_unlock(&tp->lock);
+
+    // Wait for all threads to terminate safely
+    for(int i = 0; i < tp->thread_count; i++) 
+    {
+        pthread_join(tp->threads[i], NULL);
+    }
+
+    printf("System exit successful.\n");
     return 0;
 }
