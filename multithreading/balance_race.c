@@ -135,11 +135,20 @@ void *deposit(void *arg)
 
 /**
  * @brief Cleans up the allocated memory 
+ * @param Account account pointer
+ * @return void
  */
 void cleanup_account(Account *account)
 {
-    free(account->owner->fullname);
-    account = NULL;
+    if (account == NULL) return;
+
+    if (account->owner != NULL) 
+    {
+        free(account->owner->fullname); 
+        free(account->owner);           
+    }
+
+    free(account);
 }
 
 int main(void)
