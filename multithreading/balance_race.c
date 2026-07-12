@@ -127,10 +127,10 @@ void *deposit(void *arg)
          fprintf(stderr, "Could not perform deposit operation\n");
          exit(EXIT_FAILURE);
      }
-
+     pthread_mutex_lock(&lock);
      dep->account->balance += dep->amount;
-     printf("New Balance: %d\n", dep->account->balance);
-     return NULL;
+     pthread_mutex_unlock(&lock);
+     return (void *)&dep->account->balance;
 }
 
 /**
@@ -154,14 +154,18 @@ int main(void)
 
     // Spanw POSIX Threads 
     pthread_t t[THREADS_NUMBER];
+    uint32_t *new_balance = NULL;
 
     for(uint16_t i = 0; i < THREADS_NUMBER; i++)
         pthread_create(&t[i], NULL, deposit, (void *)&op1);
     
     // Join the Threads
     for(uint16_t i = 0; i < THREADS_NUMBER; i++)
-        pthread_join(t[i], NULL);
+        pthread_join(t[i], (void **)&new_balance);
 
+
+    printf("Returned Balance: %d\n", *new_balance);
+    printf("Account Balance : %d\n", new_account->balance);
     cleanup_account(new_account);
     
     return 0;
