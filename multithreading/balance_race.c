@@ -151,6 +151,29 @@ void cleanup_account(Account *account)
     free(account);
 }
 
+/**
+ * @brief Helper function used to calculate the 
+ * limit of when we lock the access using the mutex.
+ * 95% of the code runs in parallel. 
+ * 5% of the code runs in serial.
+ * @return void
+ */
+void calculate_limit(void)
+{
+    printf("--------------------------------\n");
+    printf("----- Multithreading Limit -----\n");
+
+    uint32_t counter = 1000000;
+
+    for(uint32_t i = 1; i < counter; i++)
+    {
+        float res = 1.0f / (0.05f + (0.95f / (float)i));
+        printf("value = %d | limit = %.2f\n", i, res);
+        usleep(100000);
+    }
+}
+
+
 int main(void)
 {
     // Create Account
@@ -176,6 +199,9 @@ int main(void)
     printf("Returned Balance: %d\n", *new_balance);
     printf("Account Balance : %d\n", new_account->balance);
     cleanup_account(new_account);
+    
+    // calculate the limit
+    calculate_limit();
     
     return 0;
 }
