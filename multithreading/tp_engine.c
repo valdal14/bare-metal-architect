@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
 
 /**
  * @brief The Polymorphic Task Interface.
@@ -87,6 +88,27 @@ void init(threadpool_t **threadpool, uint8_t thread_count, uint8_t queue_size)
     tp->shutdown = false;
 
     *threadpool = tp;
+}
+
+/**
+ * @brief Helper used to calculate the runtime 
+ * of the worker_loop function to get the 
+ * @param task_t task
+ * @return void
+ */
+void _calculate_runtime(task_t task)
+{
+    struct timespec start, end;
+    
+    clock_gettime(CLOCK_MONOTONIC, &start); 
+    task.function(task.argument); 
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    
+    // Calculate total seconds (W)
+    double W = (end.tv_sec - start.tv_sec) + 
+               (end.tv_nsec - start.tv_nsec) / 1e9;
+               
+    printf("Task Execution Time (W): %f seconds\n", W);
 }
 
 /**
