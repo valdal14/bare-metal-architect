@@ -119,6 +119,8 @@ void *worker_loop(void *arg)
         // execute the function 
         if(task.function != NULL) task.function(task.argument);
     }
+
+    return NULL;
 }
 
 /**
