@@ -89,6 +89,91 @@ void init(threadpool_t **threadpool, uint8_t thread_count, uint8_t queue_size)
     *threadpool = tp;
 }
 
+/**
+ * @brief POSIX Threads callback used to manage the lifecycle of the
+ * spawned pthreads.
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *worker_loop(void *arg)
+{
+    threadpool_t *pool = (threadpool_t *)arg;
+    verify_allocation(tp, "ThreadPool");
+
+    while(true)
+    {
+        pthread_mutex_lock(&pool->lock);
+        // while the queue is empty and shutdown is false wait
+        while(pool->count == 0 && !pool->shutdown) pthread_cond_wait(&pool->notify, &pool->lock);
+        // if shutdown is true and the queue is empty release the lock and break 
+        if(pool->shutdown && pool->count == 0)
+        {
+            pthread_mutex_unlock(&pool->lock);
+            break;
+        }
+
+        task_t task = pool->queue[pool->head];
+        pool->head = (pool->head + 1) % pool->queue_size;
+        pool->count--;
+
+        // execute the function 
+        if(task.function != NULL) task.function(task.argument);
+    }
+}
+
+/**
+ * @brief Submits a new task to the thread pool queue.
+ * Locks the queue, inserts the polymorphic function and argument,
+ * advances the tail pointer, and signals a sleeping worker thread.
+ * * @param pool Pointer to the threadpool engine.
+ * @param function The polymorphic function to execute (must return void).
+ * @param argument The payload/data to pass to the function.
+ * @return bool True if accepted, False if the queue is full (HTTP 429).
+ */
+bool submit_task(threadpool_t *pool, void (*function)(void *), void *argument)
+{
+    pthread_mutex_lock(&pool->lock);
+    
+    if(pool->count == pool->queue_size)
+    {
+        pthread_mutex_unlock(&pool->lock);
+        return false;
+    }
+
+    pool->queue[pool->tail].function = function;
+    pool->queue[pool->tail].argument = argument;
+
+    pool->tail = (pool->tail + 1) % pool->queue_size;
+    pool->count++;
+
+    pthread_cond_signal(&pool->notify);
+    pthread_mutex_unlock(&pool->lock);
+
+    return true;
+}
+
+/**
+ * @brief Example task function to be executed by the thread pool.
+ * Unpacks the void pointer into a uint8_t array and simulates work.
+ * * @param arg Void pointer to the arguments array.
+ * @return void
+ */
+void execute_task(void *arg)
+{
+    uint8_t *args = (uint8_t *)arg;
+
+    // Get the pthread ID for logging purposes
+    pthread_t id = pthread_self();
+
+    printf("[Thread %p] Executing task with args: {%d, %d}...\n", (void*)id, args[0], args[1]);
+
+    // Simulate a blocking operation (like a DB query or API call)
+    sleep(1);
+
+    printf("[Thread %p] Task complete.\n", (void*)id);
+}
+
+
 int main(void)
 {
     threadpool_t *tp = NULL;
