@@ -98,7 +98,7 @@ void init(threadpool_t **threadpool, uint8_t thread_count, uint8_t queue_size)
 void *worker_loop(void *arg)
 {
     threadpool_t *pool = (threadpool_t *)arg;
-    verify_allocation(tp, "ThreadPool");
+    verify_allocation(pool, "ThreadPool");
 
     while(true)
     {
