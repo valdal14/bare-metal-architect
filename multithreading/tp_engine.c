@@ -92,7 +92,10 @@ void init(threadpool_t **threadpool, uint8_t thread_count, uint8_t queue_size)
 
 /**
  * @brief Helper used to calculate the runtime 
- * of the worker_loop function to get the 
+ * of the worker_loop function to get the
+ * This helper helps to compute L=λW to calculate
+ * the size of the queue.
+ *
  * @param task_t task
  * @return void
  */
@@ -104,7 +107,7 @@ void _calculate_runtime(task_t task)
     task.function(task.argument); 
     clock_gettime(CLOCK_MONOTONIC, &end);
     
-    // Calculate total seconds (W)
+    // Calculate total seconds (Wait)
     double W = (end.tv_sec - start.tv_sec) + 
                (end.tv_nsec - start.tv_nsec) / 1e9;
                
@@ -143,6 +146,20 @@ void *worker_loop(void *arg)
     }
 
     return NULL;
+}
+
+/**
+ * @brief Helper used to boot up the workers.
+ * The POSIX thread will be sleeping until 
+ * a new request will be submitted. 
+ *
+ * @param threadpool_t tp pointer
+ * @return void
+ */
+void spawn_workers(threadpool_t *tp)
+{
+    for(int i = 0; i < tp->thread_count; i++)
+        pthread_create(&(tp->threads[i]), NULL, worker_loop, (void *)tp);
 }
 
 /**
@@ -202,6 +219,8 @@ int main(void)
 {
     threadpool_t *tp = NULL;
     init(&tp, 16, 5);
-    printf("ThreadPool allocated at address %p\n", tp);
+    // Boot up the workers
+    spawn_workers(tp);
+
     return 0;
 }
