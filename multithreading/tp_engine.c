@@ -123,7 +123,6 @@ void _calculate_runtime(task_t task)
 void *worker_loop(void *arg)
 {
     threadpool_t *pool = (threadpool_t *)arg;
-    verify_allocation(pool, "ThreadPool");
 
     while(true)
     {
@@ -140,9 +139,13 @@ void *worker_loop(void *arg)
         task_t task = pool->queue[pool->head];
         pool->head = (pool->head + 1) % pool->queue_size;
         pool->count--;
+        pthread_mutex_unlock(&pool->lock);
 
-        // execute the function 
-        if(task.function != NULL) task.function(task.argument);
+        // calculate the runtime and execute the task 
+        if(task.function != NULL) 
+        {
+            _calculate_runtime(task);
+        }
     }
 
     return NULL;
@@ -160,6 +163,18 @@ void spawn_workers(threadpool_t *tp)
 {
     for(int i = 0; i < tp->thread_count; i++)
         pthread_create(&(tp->threads[i]), NULL, worker_loop, (void *)tp);
+}
+
+/**
+ * @brief Helper used to join the workers.
+ * with the Main thread.
+ * @param threadpool_t tp pointer
+ * @return void
+ */
+void join_workers(threadpool_t *tp)
+{
+    for(int i = 0; i < tp->thread_count; i++)
+        pthread_join(tp->threads[i], NULL);
 }
 
 /**
@@ -214,13 +229,45 @@ void execute_task(void *arg)
     printf("[Thread %p] Task complete.\n", (void*)id);
 }
 
-
 int main(void)
 {
     threadpool_t *tp = NULL;
-    init(&tp, 16, 5);
+    init(&tp, 16, 4);
     // Boot up the workers
     spawn_workers(tp);
+    
+    // Prepare some payloads
+    uint8_t payload1[2] = {10, 4};
+    uint8_t payload2[2] = {99, 1};
+    uint8_t payload3[2] = {42, 7};
+    uint8_t payload4[2] = {15, 3};
+
+    // The Main Thread (like an API Gateway) floods the queue
+    printf("Main thread: Submitting 4 tasks...\n");
+    submit_task(tp, execute_task, payload1);
+    submit_task(tp, execute_task, payload2);
+    submit_task(tp, execute_task, payload3);
+    submit_task(tp, execute_task, payload4);
+
+    printf("Main thread: Tasks submitted. Now waiting for workers to finish...\n");
+
+    // Sleep main thread to give workers time to process the queue
+    // (In a real server, this would be an infinite while(true) loop accepting HTTP requests)
+    sleep(3);
+
+    printf("Main thread: Shutting down system.\n");
+
+    // Trigger graceful shutdown
+    pthread_mutex_lock(&tp->lock);
+    tp->shutdown = true;
+    // Wake everyone up to check the shutdown flag
+    pthread_cond_broadcast(&tp->notify); 
+    pthread_mutex_unlock(&tp->lock);
+
+    // Wait for all threads to terminate safely
+    join_workers(tp);
+    
+    printf("System exit successful.\n");
 
     return 0;
 }
