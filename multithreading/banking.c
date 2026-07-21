@@ -13,7 +13,7 @@
 #define BALANCE_BIT 1 
 #define PREMIUM_BIT 3
 // Bank's Macros 
-#define BANK_BRANCH_CAPACITY 10
+#define BANK_BRANCH_CAPACITY 5
 
 // TYPES -----------------------------------------------------
 typedef enum
@@ -21,7 +21,7 @@ typedef enum
     CUSTOMER,
     ACCOUNT,
     BRANCH,
-    BANK 
+    BANK
 } OBJType;
 
 typedef struct Customer
@@ -34,6 +34,8 @@ typedef struct Account
 {
 
     struct Customer *customer;
+    struct Account *next;
+    int balance;
     uint32_t id;
     /**
      * bit 0 locked
@@ -42,7 +44,7 @@ typedef struct Account
      */
     uint8_t info; 
 
-} Account;
+} Account; // 25 + 1 padding bytes 
 
 typedef struct Branch 
 {
@@ -59,6 +61,21 @@ typedef struct
 } Bank;
 
 // METHODS  --------------------------------------------------
+
+/**
+ * @brief Hashes a string key into a valid array index.
+ * @param key The string to hash.
+ * @param capacity The size of the hash table array.
+ * @return int The calculated index.
+ */
+int hash_function(const char *key, int capacity) {
+    int hash = 0;
+    while (*key != '\0') {
+        hash = (hash + *key) % capacity;
+        key++;
+    }
+    return hash;
+}
 
 /**
  * @brief Maps the given OBJType and return a readable string 
@@ -125,7 +142,7 @@ void obj_alloc(void *obj, OBJType type)
  * @param Bank bank double pointer
  * @return void
  */
-void init(Bank **bank)
+void init_bank(Bank **bank)
 {
     Bank *new_bank = (Bank *)calloc(1, sizeof(Bank));
     obj_alloc(new_bank, BANK);
@@ -139,10 +156,44 @@ void init(Bank **bank)
     *bank = new_bank;
 }
 
+/**
+ * @brief Adds a new Branch to the Bank
+ * @param Bank bank pointer
+ * @param const char branch_name pointer
+ * @return void
+ */
+void add_branch(Bank *bank, const char *branch_name)
+{
+    Branch *new_branch = (Branch *)calloc(1, sizeof(Branch));
+    obj_alloc(new_branch, BRANCH);
+    new_branch->head = NULL;
+    new_branch->tail = NULL;
+   
+    // alloc and copy the branch_name
+    size_t name_len = strlen(branch_name) + 1;
+    new_branch->branch_id = (char *)malloc(sizeof(char) * name_len);
+    
+    if(new_branch->branch_id == NULL)
+    {
+        fprintf(stderr, "Could not allocate space for the new branch\n");
+        exit(EXIT_FAILURE);
+    }
+
+    strncpy(new_branch->branch_id, branch_name, name_len);
+    new_branch->branch_id[name_len] = '\0';
+
+    // hashing and adding the new branch 
+    uint8_t idx = hash_function(new_branch->branch_id, bank->capacity);
+    printf("idx = %d\n", idx);
+    bank->branches[idx] = new_branch;
+}
+
 int main(void)
 {
     Bank *bank = NULL;
-    init(&bank);
+    init_bank(&bank);
     printf("Bank opened at address %p\n", bank);
+    add_branch(bank, "USA");
+    printf("name = %s\n", bank->branches[3]->branch_id);
     return 0;
 }
