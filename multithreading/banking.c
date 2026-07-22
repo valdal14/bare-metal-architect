@@ -49,6 +49,7 @@ typedef struct Account
 typedef struct Branch 
 {
     char *branch_id;
+    struct Branch *next;
     struct Account *head;
     struct Account *tail;
 } Branch;
@@ -174,6 +175,7 @@ void add_branch(Bank *bank, const char *branch_name)
     obj_alloc(new_branch, BRANCH);
     new_branch->head = NULL;
     new_branch->tail = NULL;
+    new_branch->next = NULL;
    
     // alloc and copy the branch_name
     size_t name_len = strlen(branch_name) + 1;
@@ -190,8 +192,52 @@ void add_branch(Bank *bank, const char *branch_name)
 
     // hashing and adding the new branch 
     uint8_t idx = hash_function(new_branch->branch_id, bank->capacity);
-    bank->branches[idx] = new_branch;
+    
+    // check if the branch at idx already exist 
+    if(bank->branches[idx] != NULL)
+    {
+        Branch *current = bank->branches[idx];
+        while(current->next != NULL) current = current->next;
+        current->next = new_branch;
+    }
+    else
+    {
+        bank->branches[idx] = new_branch;
+    }
+    
     bank->branch_count += 1;
+}
+
+/**
+ * @brief Prints out all the branches associated 
+ * with the Bank 
+ * @param Bank bank pointer
+ * @return void
+ */
+void show_branches(Bank *bank)
+{
+    if(bank->capacity == 0) return;
+
+    for(uint8_t i = 0; i < bank->capacity; i++)
+    {
+        if(bank->branches[i] != NULL)
+        {
+            Branch *current = bank->branches[i];
+            
+            while(current != NULL)
+            {
+                printf("[%d] Branch's ID = %s\n", i, current->branch_id);
+                current = current->next;
+            }
+
+        }
+        else 
+        {
+            printf("[%d] index is empty for now\n", i);
+        }
+        
+        printf("----------------------------\n");
+    }
 }
 
 int main(void)
@@ -200,7 +246,10 @@ int main(void)
     init_bank(&bank);
     printf("Bank opened at address %p\n", bank);
     add_branch(bank, "USA");
-    printf("name = %s\n", bank->branches[3]->branch_id);
-    
+    add_branch(bank, "ITA");
+    add_branch(bank, "NED");
+    add_branch(bank, "ESP");
+    add_branch(bank, "GER");
+    show_branches(bank); 
     return 0;
 }
