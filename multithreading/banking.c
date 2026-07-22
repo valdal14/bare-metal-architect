@@ -165,12 +165,6 @@ void init_bank(Bank **bank)
  */
 void add_branch(Bank *bank, const char *branch_name)
 {
-    if(bank->branch_count + 1 > BANK_BRANCH_CAPACITY)
-    {
-        fprintf(stderr, "Max Branch Capacity Reached\n");
-        exit(EXIT_FAILURE);
-    }
-
     Branch *new_branch = (Branch *)calloc(1, sizeof(Branch));
     obj_alloc(new_branch, BRANCH);
     new_branch->head = NULL;
@@ -204,9 +198,76 @@ void add_branch(Bank *bank, const char *branch_name)
     {
         bank->branches[idx] = new_branch;
     }
-    
+
     bank->branch_count += 1;
 }
+
+/**
+ * @brief Finds a branch by a its id 
+ * @param Bank bank pointer
+ * @param const char branch_id pointer
+ * @return void pointer 
+ */
+void *find(Bank *bank, const char *branch_id)
+{
+    uint8_t idx = hash_function(branch_id, BANK_BRANCH_CAPACITY);
+    printf("%d\n", idx);
+    
+    for(uint8_t i = 0; i < bank->capacity; i++)
+    {
+        if(bank->branches[idx] != NULL)
+        {
+            if(strcmp(bank->branches[idx]->branch_id, branch_id) == 0)
+            {
+                printf("Found branch with id: %s\n", bank->branches[idx]->branch_id);
+                return (void *)bank->branches[idx];
+            }
+            else
+            {
+                Branch *current = bank->branches[idx];
+                
+                while(current != NULL)
+                {
+                    if(strcmp(current->branch_id, branch_id) == 0) 
+                        return (void *)current;
+                    current = current->next;
+                }
+
+                // No Branches found inside the nodes.
+                return NULL;
+            }
+        }
+        else
+        {
+            fprintf(stderr, "Could not find any branches with id: %s\n", branch_id);
+            return NULL;
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Opens a new Account (Customer included)
+ * @param const char branch_id pointer
+ * @param const char customer_name pointer
+ * @return void
+ */
+void open_account(Bank *bank, const char *branch_id, const char *customer_name)
+{
+   // Find a branch first
+   Branch *select_branch = (Branch *)find(bank, branch_id);
+   
+   if(select_branch == NULL) return;
+
+   printf("Bank's Branch = %s\n", bank->branches[0]->branch_id);
+   printf("Customer      = %s\n", customer_name);
+
+
+}
+
+
+// UI-HELPERS  -----------------------------------------------
 
 /**
  * @brief Helper callback used to prints the given Bank's branch
@@ -255,12 +316,18 @@ void show(Bank *bank, void(*on_found)(Branch *branch))
 int main(void)
 {
     Bank *bank = NULL;
+    // Init a new Bank
     init_bank(&bank);
+    // Add Branches
     add_branch(bank, "USA");
     add_branch(bank, "ITA");
     add_branch(bank, "NED");
     add_branch(bank, "ESP");
     add_branch(bank, "GER");
+    add_branch(bank, "JAP");
+    // Prints all stored Branches
     show(bank, print_branch); 
+    // Open new bank account 
+    open_account(bank, "ESP", "Valerio DAlessio");
     return 0;
 }
