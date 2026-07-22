@@ -244,7 +244,6 @@ int main(void)
 {
     Bank *bank = NULL;
     init_bank(&bank);
-    printf("Bank opened at address %p\n", bank);
     add_branch(bank, "USA");
     add_branch(bank, "ITA");
     add_branch(bank, "NED");
