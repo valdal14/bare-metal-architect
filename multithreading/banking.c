@@ -209,12 +209,30 @@ void add_branch(Bank *bank, const char *branch_name)
 }
 
 /**
+ * @brief Helper callback used to prints the given Bank's branch
+ * @param Branch branch pointer
+ * @return void
+ */
+void print_branch(Branch *branch)
+{
+    Branch *current = branch;
+    uint8_t count = 0;
+
+    while(current != NULL)
+    {
+        printf("[%d] Branch's ID = %s\n", count, current->branch_id);
+        current = current->next;
+        count++;
+    }
+}
+
+/**
  * @brief Prints out all the branches associated 
  * with the Bank 
  * @param Bank bank pointer
  * @return void
  */
-void show_branches(Bank *bank)
+void show(Bank *bank, void(*on_found)(Branch *branch))
 {
     if(bank->capacity == 0) return;
 
@@ -223,13 +241,7 @@ void show_branches(Bank *bank)
         if(bank->branches[i] != NULL)
         {
             Branch *current = bank->branches[i];
-            
-            while(current != NULL)
-            {
-                printf("[%d] Branch's ID = %s\n", i, current->branch_id);
-                current = current->next;
-            }
-
+            on_found(current);
         }
         else 
         {
@@ -249,6 +261,6 @@ int main(void)
     add_branch(bank, "NED");
     add_branch(bank, "ESP");
     add_branch(bank, "GER");
-    show_branches(bank); 
+    show(bank, print_branch); 
     return 0;
 }
