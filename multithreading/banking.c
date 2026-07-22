@@ -164,6 +164,12 @@ void init_bank(Bank **bank)
  */
 void add_branch(Bank *bank, const char *branch_name)
 {
+    if(bank->branch_count + 1 > BANK_BRANCH_CAPACITY)
+    {
+        fprintf(stderr, "Max Branch Capacity Reached\n");
+        exit(EXIT_FAILURE);
+    }
+
     Branch *new_branch = (Branch *)calloc(1, sizeof(Branch));
     obj_alloc(new_branch, BRANCH);
     new_branch->head = NULL;
@@ -184,8 +190,8 @@ void add_branch(Bank *bank, const char *branch_name)
 
     // hashing and adding the new branch 
     uint8_t idx = hash_function(new_branch->branch_id, bank->capacity);
-    printf("idx = %d\n", idx);
     bank->branches[idx] = new_branch;
+    bank->branch_count += 1;
 }
 
 int main(void)
@@ -195,5 +201,6 @@ int main(void)
     printf("Bank opened at address %p\n", bank);
     add_branch(bank, "USA");
     printf("name = %s\n", bank->branches[3]->branch_id);
+    
     return 0;
 }
