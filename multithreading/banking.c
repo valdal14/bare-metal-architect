@@ -294,14 +294,12 @@ void open_account(Bank *bank, const char *branch_id, const char *customer_name)
 
    if(select_branch->head == NULL)
    {
-       printf("%s has no Account\n", select_branch->branch_id);
        account->id = 1;
        select_branch->head = account;
        select_branch->tail = account;
    }
    else
    {
-       printf("%s already has an Account\n", select_branch->branch_id);
        account->id = select_branch->tail->id + 1;
        select_branch->tail->next = account;
        select_branch->tail = account;
@@ -327,7 +325,17 @@ void print_branch(Branch *branch)
         
         if(current->head != NULL)
         {
-           printf("Customer: %s\n", current->head->customer->fullname); 
+            printf("--- %s Branch's Customers ---\n", current->branch_id);
+            Account *current_account = current->head;
+
+            while(current_account != NULL)
+            {
+                printf("Customer: %s\n", current_account->customer->fullname); 
+                printf("Current Balance: %d\n", current_account->balance);
+                current_account = current_account->next;
+            }
+            
+            printf("------------------------------\n");
         }
 
         current = current->next;
@@ -375,6 +383,7 @@ int main(void)
     add_branch(bank, "JAP");
     // Open new bank account 
     open_account(bank, "GER", "Valerio DAlessio");
+    open_account(bank, "GER", "Leonor Fernandez");
     // Prints all stored Branches
     show(bank, print_branch); 
     return 0;
