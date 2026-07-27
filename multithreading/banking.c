@@ -182,7 +182,7 @@ void add_branch(Bank *bank, const char *branch_name)
     }
 
     strncpy(new_branch->branch_id, branch_name, name_len);
-    new_branch->branch_id[name_len] = '\0';
+    new_branch->branch_id[name_len - 1] = '\0';
 
     // hashing and adding the new branch 
     uint8_t idx = hash_function(new_branch->branch_id, bank->capacity);
@@ -211,40 +211,32 @@ void add_branch(Bank *bank, const char *branch_name)
 void *find(Bank *bank, const char *branch_id)
 {
     uint8_t idx = hash_function(branch_id, BANK_BRANCH_CAPACITY);
-    printf("%d\n", idx);
-    
-    for(uint8_t i = 0; i < bank->capacity; i++)
+   
+    if(bank->branches[idx] != NULL)
     {
-        if(bank->branches[idx] != NULL)
+        if(strcmp(bank->branches[idx]->branch_id, branch_id) == 0)
         {
-            if(strcmp(bank->branches[idx]->branch_id, branch_id) == 0)
-            {
-                printf("Found branch with id: %s\n", bank->branches[idx]->branch_id);
-                return (void *)bank->branches[idx];
-            }
-            else
-            {
-                Branch *current = bank->branches[idx];
-                
-                while(current != NULL)
-                {
-                    if(strcmp(current->branch_id, branch_id) == 0) 
-                        return (void *)current;
-                    current = current->next;
-                }
-
-                // No Branches found inside the nodes.
-                return NULL;
-            }
+            return (void *)bank->branches[idx];
         }
         else
         {
-            fprintf(stderr, "Could not find any branches with id: %s\n", branch_id);
+            Branch *current = bank->branches[idx];
+                
+            while(current != NULL)
+            {
+                if(strcmp(current->branch_id, branch_id) == 0) return (void *)current;
+                current = current->next;
+            }
+
+            // No Branches found inside the nodes.
             return NULL;
         }
     }
-
-    return NULL;
+    else
+    {
+        fprintf(stderr, "Could not find any branches with id: %s\n", branch_id);
+        return NULL;
+    }
 }
 
 /**
@@ -257,13 +249,63 @@ void open_account(Bank *bank, const char *branch_id, const char *customer_name)
 {
    // Find a branch first
    Branch *select_branch = (Branch *)find(bank, branch_id);
+    
+   if(select_branch == NULL) 
+   {
+       fprintf(stderr, "Could not find branch id: %s\n", branch_id);
+       exit(EXIT_FAILURE);
+   }
    
-   if(select_branch == NULL) return;
+   // Allocate space for the new Account
+   Account *account = (Account *)calloc(1, sizeof(Account));
 
-   printf("Bank's Branch = %s\n", bank->branches[0]->branch_id);
-   printf("Customer      = %s\n", customer_name);
+   if(account == NULL)
+   {
+       fprintf(stderr, "Could not allocate space for the new account\n");
+       exit(EXIT_FAILURE);
+   }
 
+   // Allocate space for the new Customer
+   Customer *new_customer = (Customer *)calloc(1, sizeof(Customer));
 
+   if(new_customer == NULL)
+   {
+       fprintf(stderr, "Could not allocate space for a new customer\n");
+       exit(EXIT_FAILURE);
+   }
+
+   size_t name_length = strlen(customer_name) + 1;
+   new_customer->fullname = (char *)malloc(sizeof(char) * name_length);
+
+   if(new_customer->fullname == NULL)
+   {
+       fprintf(stderr, "Could not allocate space for a new customer's name\n");
+       exit(EXIT_FAILURE);
+   }
+
+   strncpy(new_customer->fullname, customer_name, name_length);
+   new_customer->fullname[name_length - 1] = '\0';
+
+   // Copy the new Customer into the account 
+   account->customer = new_customer;
+   account->next = NULL;
+   account->balance = 0;
+   account->info = CUS_INFO_DEF_MASK;
+
+   if(select_branch->head == NULL)
+   {
+       printf("%s has no Account\n", select_branch->branch_id);
+       account->id = 1;
+       select_branch->head = account;
+       select_branch->tail = account;
+   }
+   else
+   {
+       printf("%s already has an Account\n", select_branch->branch_id);
+       account->id = select_branch->tail->id + 1;
+       select_branch->tail->next = account;
+       select_branch->tail = account;
+   }
 }
 
 
@@ -282,6 +324,12 @@ void print_branch(Branch *branch)
     while(current != NULL)
     {
         printf("[%d] Branch's ID = %s\n", count, current->branch_id);
+        
+        if(current->head != NULL)
+        {
+           printf("Customer: %s\n", current->head->customer->fullname); 
+        }
+
         current = current->next;
         count++;
     }
@@ -325,9 +373,9 @@ int main(void)
     add_branch(bank, "ESP");
     add_branch(bank, "GER");
     add_branch(bank, "JAP");
+    // Open new bank account 
+    open_account(bank, "GER", "Valerio DAlessio");
     // Prints all stored Branches
     show(bank, print_branch); 
-    // Open new bank account 
-    open_account(bank, "ESP", "Valerio DAlessio");
     return 0;
 }
