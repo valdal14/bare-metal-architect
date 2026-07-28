@@ -345,6 +345,7 @@ void find_customer(Bank *bank, const char *branch_id, const char *customer_name)
            {
                found = true;
                printf("Customer's fullname: %s\n", current_account->customer->fullname);
+               printf("%s's Balance: %d\n", current_account->customer->fullname, current_account->balance);
            }
 
            current_account = current_account->next;
@@ -504,7 +505,7 @@ int main(void)
     open_account(bank, "GER", "Luis Gempez", true);
     
     print_branch_info(bank, "GER");
-    find_customer(bank, "GER", "Mario Cesar");
+    find_customer(bank, "GER", "Luis Gempez");
 
     return 0;
 }
