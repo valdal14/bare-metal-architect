@@ -397,8 +397,45 @@ void print_branches(Bank *bank)
         }
 
         printf("----------------------------\n");
-    }
+    } 
+}
+
+/**
+ * @brief Finds and prints all information about a branch
+ * including account's information
+ * @param Bank bank pointer
+ * @param const char branch_id pointer
+ * @return void
+ */
+void find_branch(Bank *bank, const char *branch_id)
+{
+   Branch *current = (Branch *)find(bank, branch_id);
     
+   if(current == NULL) 
+   {
+       fprintf(stderr, "Could not find branch id: %s\n", branch_id);
+       exit(EXIT_FAILURE);
+   }
+
+   while(current != NULL)
+   {
+       if(strcmp(current->branch_id, branch_id) == 0)
+       {
+           printf("--- %s Branch's Customers ---\n", current->branch_id);
+           Account *current_account = current->head;
+
+           while(current_account != NULL)
+           {
+               printf("Customer: %s\n", current_account->customer->fullname); 
+               printf("Current Balance: %d\n", current_account->balance);
+               current_account = current_account->next;
+           }
+
+           printf("------------------------------\n");
+       }
+
+       current = current->next;
+    }
 }
 
 int main(void)
@@ -416,7 +453,8 @@ int main(void)
     // Open new bank account 
     open_account(bank, "GER", "Mario Cesar", false);
     open_account(bank, "GER", "Luis Gempez", true);
-    // Prints all stored Branches
-    print_branches(bank);
+    
+    find_branch(bank, "GER");
+
     return 0;
 }
