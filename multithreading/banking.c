@@ -243,9 +243,10 @@ void *find(Bank *bank, const char *branch_id)
  * @brief Opens a new Account (Customer included)
  * @param const char branch_id pointer
  * @param const char customer_name pointer
+ * @param bool is_premium 
  * @return void
  */
-void open_account(Bank *bank, const char *branch_id, const char *customer_name)
+void open_account(Bank *bank, const char *branch_id, const char *customer_name, bool is_premium)
 {
    // Find a branch first
    Branch *select_branch = (Branch *)find(bank, branch_id);
@@ -289,7 +290,7 @@ void open_account(Bank *bank, const char *branch_id, const char *customer_name)
    // Copy the new Customer into the account 
    account->customer = new_customer;
    account->next = NULL;
-   account->balance = 0;
+   account->balance = is_premium ? 100 : 0;
    account->info = CUS_INFO_DEF_MASK;
 
    if(select_branch->head == NULL)
@@ -369,6 +370,37 @@ void show(Bank *bank, void(*on_found)(Branch *branch))
     }
 }
 
+/**
+ * @brief Prints all the branches associated with the Bank 
+ * @param Bank bank pointer
+ * @return void
+ */
+void print_branches(Bank *bank)
+{
+    if(bank->capacity == 0)
+    {
+        printf("No Branches information available yet.\n");
+        return;
+    }
+
+    for(uint8_t i = 0; i < bank->capacity; i++)
+    {
+        if(bank->branches[i] != NULL)
+        {
+            Branch *current = bank->branches[i];
+            
+            while(current != NULL)
+            {
+                printf("Bank idx[%d]: %s\n", i, current->branch_id);
+                current = current->next;
+            }
+        }
+
+        printf("----------------------------\n");
+    }
+    
+}
+
 int main(void)
 {
     Bank *bank = NULL;
@@ -382,9 +414,9 @@ int main(void)
     add_branch(bank, "GER");
     add_branch(bank, "JAP");
     // Open new bank account 
-    open_account(bank, "GER", "Valerio DAlessio");
-    open_account(bank, "GER", "Leonor Fernandez");
+    open_account(bank, "GER", "Mario Cesar", false);
+    open_account(bank, "GER", "Luis Gempez", true);
     // Prints all stored Branches
-    show(bank, print_branch); 
+    print_branches(bank);
     return 0;
 }
