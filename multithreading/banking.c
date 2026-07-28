@@ -290,8 +290,17 @@ void open_account(Bank *bank, const char *branch_id, const char *customer_name, 
    // Copy the new Customer into the account 
    account->customer = new_customer;
    account->next = NULL;
-   account->balance = is_premium ? 100 : 0;
-   account->info = CUS_INFO_DEF_MASK;
+
+   if(is_premium)
+   {
+       account->balance = 100;
+       account->info |= BIT(PREMIUM_BIT);
+   }
+   else
+   {
+       account->balance = 0;
+       account->info = CUS_INFO_DEF_MASK;
+   }
 
    if(select_branch->head == NULL)
    {
