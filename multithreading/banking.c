@@ -307,6 +307,46 @@ void open_account(Bank *bank, const char *branch_id, const char *customer_name, 
    }
 }
 
+/**
+ * @brief Finds and shows the Account information
+ * @param Bank bank pointer
+ * @param const char branch_id pointer
+ * @param const char customer_name pointer
+ * @return void
+ */
+void find_customer(Bank *bank, const char *branch_id, const char *customer_name)
+{
+   Branch *current = (Branch *)find(bank, branch_id);
+    
+   if(current == NULL) 
+   {
+       fprintf(stderr, "Could not find branch id: %s\n", branch_id);
+       exit(EXIT_FAILURE);
+   }
+
+   bool found = false;
+   
+   while(current != NULL)
+   {
+       Account *current_account = current->head;
+       
+       while(current_account != NULL)
+       {
+           if(strcmp(customer_name, current_account->customer->fullname) == 0)
+           {
+               found = true;
+               printf("Customer's fullname: %s\n", current_account->customer->fullname);
+           }
+
+           current_account = current_account->next;
+       }
+
+       if(!found) printf("No customer named %s found in branch %s\n",customer_name, branch_id);
+       
+       current = current->next;
+   }
+}
+
 
 // UI-HELPERS  -----------------------------------------------
 
@@ -407,7 +447,7 @@ void print_branches(Bank *bank)
  * @param const char branch_id pointer
  * @return void
  */
-void find_branch(Bank *bank, const char *branch_id)
+void print_branch_info(Bank *bank, const char *branch_id)
 {
    Branch *current = (Branch *)find(bank, branch_id);
     
@@ -454,7 +494,8 @@ int main(void)
     open_account(bank, "GER", "Mario Cesar", false);
     open_account(bank, "GER", "Luis Gempez", true);
     
-    find_branch(bank, "GER");
+    print_branch_info(bank, "GER");
+    find_customer(bank, "GER", "Mario Cesar");
 
     return 0;
 }
