@@ -382,10 +382,7 @@ void deposit(Bank *bank, const char *branch_id, const char *customer_name, uint3
         exit(EXIT_FAILURE);
     }
 
-    printf("Balance = %d\n", account->balance);
     account->balance += amt;
-    printf("Balance = %d\n", account->balance);
-
 }
 
 // UI-HELPERS  -----------------------------------------------
