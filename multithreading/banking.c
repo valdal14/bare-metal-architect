@@ -321,9 +321,9 @@ void open_account(Bank *bank, const char *branch_id, const char *customer_name, 
  * @param Bank bank pointer
  * @param const char branch_id pointer
  * @param const char customer_name pointer
- * @return void
+ * @return Account pointer
  */
-void find_customer(Bank *bank, const char *branch_id, const char *customer_name)
+Account *find_customer(Bank *bank, const char *branch_id, const char *customer_name)
 {
    Branch *current = (Branch *)find(bank, branch_id);
     
@@ -346,17 +346,47 @@ void find_customer(Bank *bank, const char *branch_id, const char *customer_name)
                found = true;
                printf("Customer's fullname: %s\n", current_account->customer->fullname);
                printf("%s's Balance: %d\n", current_account->customer->fullname, current_account->balance);
+               return current_account;
            }
 
            current_account = current_account->next;
        }
 
-       if(!found) printf("No customer named %s found in branch %s\n",customer_name, branch_id);
+       if(!found) 
+       {
+           printf("No customer named %s found in branch %s\n",customer_name, branch_id);
+           return NULL;
+       }
        
        current = current->next;
    }
+
+   return NULL;
 }
 
+/**
+ * @brief Deposits a given amount to the balance of a bank account
+ * @param Bank bank pointer
+ * @param const char branch_id pointer
+ * @param const char customer_name pointer
+ * @param uint32_t amt
+ * @return void
+ */
+void deposit(Bank *bank, const char *branch_id, const char *customer_name, uint32_t amt)
+{
+    Account *account = (Account *)find_customer(bank, branch_id, customer_name);
+
+    if(account == NULL)
+    {
+        fprintf(stderr, "Could not find the account associated with user: %s\n", account->customer->fullname);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Balance = %d\n", account->balance);
+    account->balance += amt;
+    printf("Balance = %d\n", account->balance);
+
+}
 
 // UI-HELPERS  -----------------------------------------------
 
@@ -506,6 +536,6 @@ int main(void)
     
     print_branch_info(bank, "GER");
     find_customer(bank, "GER", "Luis Gempez");
-
+    deposit(bank, "GER", "Luis Gempez", 50); 
     return 0;
 }
