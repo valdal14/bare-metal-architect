@@ -2,7 +2,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-typedef struct
+#define BLOCK 256
+
+typedef struct PixelPacket
 {
     char *payload; // 8 bytes
     uint32_t size; // 4 bytes
@@ -17,7 +19,47 @@ typedef struct
     // 16 bytes struct size 
 } PixelPacket;
 
+typedef struct
+{
+    struct PixelPacket *buffer;
+    size_t capacity;
+    size_t offset;
+} Arena;
+
+
+/**
+ * @brief Allocates the Arena 
+ * @param Arena arena double pointer
+ * @return void
+ */
+void init(Arena **arena)
+{
+    Arena *new_arena = (Arena *)calloc(1, sizeof(Arena));
+    
+    if(new_arena == NULL)
+    {
+        fprintf(stderr, "Could not allocate space for the Arena\n");
+        exit(EXIT_FAILURE);
+    }
+
+    new_arena->buffer = (PixelPacket *)calloc(1, BLOCK);
+
+    if(new_arena->buffer == NULL)
+    {
+        fprintf(stderr, "Could not allocate space for the buffer\n");
+        exit(EXIT_FAILURE);
+    }
+
+    new_arena->capacity = BLOCK;
+    new_arena->offset = 0;
+
+    *arena = new_arena;
+}
+
 int main(void)
 {
+    Arena *arena = NULL;
+    init(&arena);
+    printf("Arena Allocated at address %p\n", arena);
     return 0;
 }
