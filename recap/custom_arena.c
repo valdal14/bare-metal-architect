@@ -49,13 +49,18 @@ void alloc(Arena **arena, size_t capacity)
  */
 void buffer_realloc(Arena *arena)
 {
-    void *op = realloc(arena->buffer, (arena->capacity * 2));
+    size_t new_capacity = arena->capacity * 2;
+    void *op = realloc(arena->buffer, new_capacity);
     
     if(op == NULL)
     {
         fprintf(stderr, "Buffer Reallocation Failed\n");
         exit(EXIT_FAILURE);
     }
+
+    // Point the arena buffer to the newly allocated block
+    arena->buffer = (uint8_t *)op;
+    arena->capacity = new_capacity; 
 }
 
 /**
@@ -67,21 +72,37 @@ void buffer_realloc(Arena *arena)
  */
 void add(Arena *arena, uint8_t val, void(*on_full)(Arena *arena))
 {
-    if((arena->size + 1) > arena->capacity)
+    // get the size of the type we stored in the buffer 
+    size_t type_size = sizeof(uint8_t);
+    
+    if((arena->size + type_size) > arena->capacity)
     {
         printf("Arena Buffer Full:\n");
         printf("Reallocating Space for the Buffer. Please Wait...\n");
         sleep(1);
         on_full(arena);
-        printf("Reallocation Completed Successfully");
+        printf("Reallocation Completed Successfully\n");
     }
-
+ 
     arena->buffer[arena->offset] = val;
     // the size of this is determined by the size of the type stored 
     // inside the Arena's buffer 
-    size_t type_size = sizeof(uint8_t);
-    arena->offset += 1;
     arena->size += type_size;
+    arena->offset += type_size;
+}
+
+/**
+ * @brief Prints out the elements stored in the Arena's Buffer
+ * @param Arena arena pointer
+ * @return void
+ */
+void print_buffer(Arena *arena)
+{
+    for(uint8_t i = 0; i < arena->size; i++)
+    {
+        printf("[%d] = %d\n", i , arena->buffer[i]);
+        sleep(1);
+    }
 }
 
 int main(void)
@@ -89,8 +110,11 @@ int main(void)
     Arena *arena = NULL;
     alloc(&arena, 3);
     printf("Arena allocated at address %p\n", arena);
-    printf("Arena Capacity = %lu\n", arena->capacity);
-    printf("Arena Size = %lu\n", arena->size);
     add(arena, 14, buffer_realloc);
+    add(arena, 22, buffer_realloc);
+    add(arena, 17, buffer_realloc);
+    add(arena, 44, buffer_realloc);
+    add(arena, 82, buffer_realloc);
+    print_buffer(arena);
     return 0;
 }
