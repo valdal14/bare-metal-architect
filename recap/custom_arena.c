@@ -6,6 +6,7 @@
 #include <stdbool.h>
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t reset_cond = PTHREAD_COND_INITIALIZER;
 
 typedef struct
 {
@@ -14,6 +15,7 @@ typedef struct
     size_t offset;
     size_t size;
     bool is_full;
+    bool can_reset;
 
 } Arena;
 
@@ -45,6 +47,7 @@ void alloc(Arena **arena, size_t capacity)
     new_arena->offset = 0;
     new_arena->size = 0;
     new_arena->is_full = false;
+    new_arena->can_reset = false;
     *arena = new_arena;
 }
 
@@ -64,6 +67,7 @@ void add(Arena *arena, uint8_t val)
         printf("Arena Buffer Full:\n");
         printf("Start the print worker... Please wait...\n");
         sleep(1);
+        arena->is_full = true;
         pthread_cond_signal(&cond);
     }
  
@@ -86,6 +90,8 @@ void print_buffer(Arena *arena)
         printf("[%d] = %d\n", i , arena->buffer[i]);
         sleep(1);
     }
+
+    arena->can_reset = true;
 }
 
 /**
@@ -115,16 +121,48 @@ void *worker_print(void *arg)
   
     pthread_mutex_lock(&lock);
     
-    while(arena->size <= arena->capacity)
+    while(arena->is_full == false)
     {
         pthread_cond_wait(&cond, &lock);
     }
     
     print_buffer(arena);
-
+    pthread_cond_signal(&reset_cond);
+    
     pthread_mutex_unlock(&lock);
 
     return (void *)arena;
+}
+
+/**
+ * @brief POSIX Thread Callback used to reset  
+ * the Arena and deallocate memory
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *arena_reset(void *arg)
+{
+    Arena *arena = (Arena *)arg;
+
+    pthread_mutex_lock(&lock);
+    
+    while(arena->can_reset == false)
+    {
+        pthread_cond_wait(&reset_cond, &lock);
+    }
+    
+    arena->offset = 0;
+    free(arena->buffer);
+    free(arena);
+    arena = NULL;
+
+    pthread_mutex_unlock(&lock);
+
+    printf("Resetting the Arena... Please wait...\n");
+    sleep(1);
+    printf("Arena was reset\n");
+    
+    return arena;
 }
 
 int main(void)
@@ -135,8 +173,10 @@ int main(void)
     size_t capacity = arena->capacity + 1;
     pthread_t workers[capacity];
     pthread_t print_thread;
+    pthread_t reset_thread;
 
     pthread_create(&print_thread, NULL, worker_print, (void *)arena);
+    pthread_create(&reset_thread, NULL, arena_reset, (void *)arena);
 
     for(uint8_t i = 0; i < capacity; i++)
     {
@@ -149,7 +189,7 @@ int main(void)
     }
 
     pthread_join(print_thread, NULL);
-
+    pthread_join(reset_thread, NULL);
 
     return 0;
 }
