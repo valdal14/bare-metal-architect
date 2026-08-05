@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <pthread.h>
 #include <unistd.h>
+#include <stdbool.h>
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 typedef struct
 {
@@ -9,6 +13,7 @@ typedef struct
     size_t capacity;
     size_t offset;
     size_t size;
+    bool is_full;
 
 } Arena;
 
@@ -39,38 +44,17 @@ void alloc(Arena **arena, size_t capacity)
     new_arena->capacity = capacity;
     new_arena->offset = 0;
     new_arena->size = 0;
+    new_arena->is_full = false;
     *arena = new_arena;
-}
-
-/**
- * @brief Attempts to realloc the Arena's buffer 
- * @param Arena arena pointer
- * @return void
- */
-void buffer_realloc(Arena *arena)
-{
-    size_t new_capacity = arena->capacity * 2;
-    void *op = realloc(arena->buffer, new_capacity);
-    
-    if(op == NULL)
-    {
-        fprintf(stderr, "Buffer Reallocation Failed\n");
-        exit(EXIT_FAILURE);
-    }
-
-    // Point the arena buffer to the newly allocated block
-    arena->buffer = (uint8_t *)op;
-    arena->capacity = new_capacity; 
 }
 
 /**
  * @brief Add a new values to the Arena's Buffer
  * @param Arena arena pointer
  * @param uint8_t val
- * @param void(*on_full)(Arena *arena) realloc callback
  * @return void
  */
-void add(Arena *arena, uint8_t val, void(*on_full)(Arena *arena))
+void add(Arena *arena, uint8_t val)
 {
     // get the size of the type we stored in the buffer 
     size_t type_size = sizeof(uint8_t);
@@ -78,10 +62,9 @@ void add(Arena *arena, uint8_t val, void(*on_full)(Arena *arena))
     if((arena->size + type_size) > arena->capacity)
     {
         printf("Arena Buffer Full:\n");
-        printf("Reallocating Space for the Buffer. Please Wait...\n");
+        printf("Start the print worker... Please wait...\n");
         sleep(1);
-        on_full(arena);
-        printf("Reallocation Completed Successfully\n");
+        pthread_cond_signal(&cond);
     }
  
     arena->buffer[arena->offset] = val;
@@ -105,16 +88,68 @@ void print_buffer(Arena *arena)
     }
 }
 
+/**
+ * @brief POSIX Thread Callback used to lock 
+ * and add a new value to the Arena's buffer
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *worker_add(void *arg)
+{
+    Arena *arena = (Arena *)arg;
+    pthread_mutex_lock(&lock);
+    add(arena, (arena->size + 2));
+    pthread_mutex_unlock(&lock);
+    return (void *)arena;
+}
+
+/**
+ * @brief POSIX Thread Callback used to print 
+ * the values stored into the Arena's buffer
+ * @param void arg pointer
+ * @return void pointer
+ */
+void *worker_print(void *arg)
+{
+    Arena *arena = (Arena *)arg;
+  
+    pthread_mutex_lock(&lock);
+    
+    while(arena->size <= arena->capacity)
+    {
+        pthread_cond_wait(&cond, &lock);
+    }
+    
+    print_buffer(arena);
+
+    pthread_mutex_unlock(&lock);
+
+    return (void *)arena;
+}
+
 int main(void)
 {
     Arena *arena = NULL;
-    alloc(&arena, 3);
+    alloc(&arena, 5);
     printf("Arena allocated at address %p\n", arena);
-    add(arena, 14, buffer_realloc);
-    add(arena, 22, buffer_realloc);
-    add(arena, 17, buffer_realloc);
-    add(arena, 44, buffer_realloc);
-    add(arena, 82, buffer_realloc);
-    print_buffer(arena);
+    size_t capacity = arena->capacity + 1;
+    pthread_t workers[capacity];
+    pthread_t print_thread;
+
+    pthread_create(&print_thread, NULL, worker_print, (void *)arena);
+
+    for(uint8_t i = 0; i < capacity; i++)
+    {
+        pthread_create(&workers[i], NULL, worker_add, (void *)arena);
+    }
+
+    for(uint8_t i = 0; i < capacity; i++)
+    {
+        pthread_join(workers[i], NULL);
+    }
+
+    pthread_join(print_thread, NULL);
+
+
     return 0;
 }
