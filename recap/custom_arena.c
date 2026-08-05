@@ -69,6 +69,7 @@ void add(Arena *arena, uint8_t val)
         sleep(1);
         arena->is_full = true;
         pthread_cond_signal(&cond);
+        return;
     }
  
     arena->buffer[arena->offset] = val;
@@ -140,7 +141,7 @@ void *worker_print(void *arg)
  * @param void arg pointer
  * @return void pointer
  */
-void *arena_reset(void *arg)
+void *arena_destroy(void *arg)
 {
     Arena *arena = (Arena *)arg;
 
@@ -176,7 +177,7 @@ int main(void)
     pthread_t reset_thread;
 
     pthread_create(&print_thread, NULL, worker_print, (void *)arena);
-    pthread_create(&reset_thread, NULL, arena_reset, (void *)arena);
+    pthread_create(&reset_thread, NULL, arena_destroy, (void *)arena);
 
     for(uint8_t i = 0; i < capacity; i++)
     {
