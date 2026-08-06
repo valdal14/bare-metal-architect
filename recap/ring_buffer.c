@@ -66,20 +66,28 @@ void push(void *argument)
     Argument *arg = (Argument *)argument;
     if(arg == NULL || arg->queue == NULL) exit(EXIT_FAILURE);
 
-    if((arg->queue->size + 1) > arg->queue->capacity) 
+    // CRITICAL: Lock BEFORE checking or modifying shared state
+    pthread_mutex_lock(&lock);
+
+    if((arg->queue->size + 1) > arg->queue->capacity)
     {
         arg->queue->is_full = true;
         pthread_cond_signal(&cond_full);
+        pthread_mutex_unlock(&lock); 
+        usleep(10000);
         return;
     }
 
     arg->queue->buffer[arg->queue->head] = arg->val;
     printf("Pushed value %d\n", arg->queue->buffer[arg->queue->head]);
-    sleep(1);
-    uint8_t next_index = (arg->queue->head + 1) % arg->queue->capacity;
-    arg->queue->head = next_index;
+
+    arg->queue->head = (arg->queue->head + 1) % arg->queue->capacity;
     arg->queue->size += 1;
+
+    pthread_mutex_unlock(&lock);
+    sleep(1);
 }
+
 
 /**
  * @brief Pops a stored value from the Queue
@@ -91,15 +99,21 @@ void pop(void *argument)
     Argument *arg = (Argument *)argument;
     if(arg == NULL || arg->queue == NULL) exit(EXIT_FAILURE);
     
-    if(arg->queue->size == 0) return;
+    pthread_mutex_lock(&lock); 
+    
+    if(arg->queue->size == 0) {
+        pthread_mutex_unlock(&lock);
+        return;
+    }
 
     uint8_t val = arg->queue->buffer[arg->queue->tail];
-
     arg->queue->tail = (arg->queue->tail + 1) % arg->queue->capacity;
     arg->queue->size -= 1;
     
     printf("Popped value %d\n", val);
     arg->queue->is_full = false;
+    
+    pthread_mutex_unlock(&lock);
     sleep(1);
 }
 
@@ -113,11 +127,22 @@ void *is_full(void *arg)
 {
     Queue *queue = (Queue *)arg;
     if(queue == NULL) return NULL;
-    pthread_mutex_lock(&lock);
-    while(queue->is_full == false) pthread_cond_wait(&cond_full, &lock);
-    printf("[WARN] The Queue Reached Max Capacity\n");
-    pthread_mutex_unlock(&lock);
-    return (void *)queue;
+    // Keep the detached thread alive 
+    while(true) 
+    {
+        pthread_mutex_lock(&lock);
+        
+        // Wait until the queue is actually full
+        while(queue->is_full == false) {
+            pthread_cond_wait(&cond_full, &lock);
+        }
+
+        printf("[WARN] The Queue Reached Max Capacity\n");
+        queue->is_full = false; 
+        pthread_mutex_unlock(&lock);
+    }
+
+    return NULL;
 }
 
 int main(void)
@@ -125,10 +150,10 @@ int main(void)
     Queue *queue = NULL;
     init(&queue, 3);
     printf("RB Queue allocated at address %p\n", queue);
-    pthread_t t_log_full = NULL;
-    pthread_detach(t_log_full);
-    // spawn a thread that logs when the queue is full 
+    // Background logger 
+    pthread_t t_log_full; 
     pthread_create(&t_log_full, NULL, is_full, (void *)queue);
+    pthread_detach(t_log_full);
 
     // Push Values 
     Argument arg1;
@@ -147,6 +172,15 @@ int main(void)
     arg1.queue->pop((void *)&arg1);
     arg1.queue->pop((void *)&arg1);
     arg1.queue->pop((void *)&arg1);
-    
+    // push again 
+    arg1.val = 4;
+    arg1.queue->push((void *)&arg1);
+    arg1.val = 11;
+    arg1.queue->push((void *)&arg1);
+    arg1.val = 21;
+    arg1.queue->push((void *)&arg1);
+    arg1.val = 13;
+    arg1.queue->push((void *)&arg1);
+
     return 0;
 }
